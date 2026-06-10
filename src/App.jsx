@@ -730,5 +730,16 @@ export default function App() {
     if (type === "apiari") {
       const nAp = apiaris.filter(a => a.id !== id);
       const nAr = arnes.filter(a => a.apiariId !== id);
-    const arIds = arnes.filter(a => a.apiariId === id).map(a => a.id);
+   const arIds = arnes.filter(a => a.apiariId === id).map(a => a.id);
   const nRv = revisions.filter(r => !arIds.includes(r.arna));
+
+  return (
+    <div>
+      {/* Aquí va el contingut del teu component. 
+          Si tenies un bloc de codi HTML/JSX que s'ha esborrat sense voler, 
+          necessitaràs reescriure el que anava dins del return. */}
+    </div>
+  );
+};
+
+export default App;
