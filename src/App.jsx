@@ -44,61 +44,57 @@ const FITXA_PROMPT =
 // ─── API WORKERS ──────────────────────────────────────────────────────────────
 async function readFitxaAI(base64, mediaType) {
   try {
-    console.log("Iniciant petició d'anàlisi de fitxa a la IA...");
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    console.log("Iniciant petició d'anàlisi de fitxa a través de Vercel...");
+    
+    // Truquem a la nostra pròpia API de Vercel de forma interna i segura
+    const res = await fetch("/api/analyze", {
       method: "POST",
       headers: { 
-        "Content-Type": "application/json",
-        "x-api-key": "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", 
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerously-allow-browser": "true"
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 800,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-            { type: "text",  text: FITXA_PROMPT }
-          ]
-        }]
-      })
+      body: JSON.stringify({ base64, mediaType })
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error("Error a l'API de Claude:", res.status, errText);
-      return { numero: null, error: "L'API ha rebutjat la petició" };
+      console.error("Error a la ruta de Vercel:", res.status, errText);
+      return { numero: null, error: "El servidor ha fallat" };
     }
 
     const data = await res.json();
-    console.log("Dades rebudes de l'API de Claude:", data);
-
-    let text = "";
-    if (data && Array.isArray(data.content)) {
-      text = data.content.map(b => b.text || "").join("");
-    } else if (data && data.text) {
-      text = data.text;
-    }
-
-    if (!text || typeof text !== "string") {
-      console.error("L'API no ha retornat cap text analitzable.");
-      return { numero: null, error: "Resposta buida de la IA" };
-    }
-
-    console.log("Resposta crua extreta:", text);
-    try {
-      const netejat = text.replace(/```json|```/g, "").trim();
-      return JSON.parse(netejat);
-    } catch (e) {
-      console.error("Error al parsejar el JSON de la IA", e);
-      return { numero: null, error: "Error de format en la resposta" };
-    }
+    console.log("Dades rebudes des de Vercel:", data);
+    return data;
 
   } catch(err) { 
-    console.error("Error crític en el procés de lectura de fitxa:", err);
-    return { numero: null, error: "Error de connexió" }; 
+    console.error("Error crític en connectar amb el servidor:", err);
+    return { numero: null, error: "Error de connexió de xarxa" }; 
+  }
+async function readFitxaAI(base64, mediaType) {
+  try {
+    console.log("Iniciant petició d'anàlisi de fitxa a través de Vercel...");
+    
+    // Truquem a la nostra pròpia API de Vercel de forma interna i segura
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ base64, mediaType })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Error a la ruta de Vercel:", res.status, errText);
+      return { numero: null, error: "El servidor ha fallat" };
+    }
+
+    const data = await res.json();
+    console.log("Dades rebudes des de Vercel:", data);
+    return data;
+
+  } catch(err) { 
+    console.error("Error crític en connectar amb el servidor:", err);
+    return { numero: null, error: "Error de connexió de xarxa" }; 
   }
 }
 async function fetchMeteo() {
