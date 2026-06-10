@@ -59,11 +59,17 @@ const FITXA_PROMPT =
 
 async function readFitxaAI(base64, mediaType) {
   try {
+    console.log("Iniciant petició d'anàlisi de fitxa a la IA...");
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "x-api-key": "LA_TEVA_CLAU_D_API_DE_CLAUDE", 
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerously-allow-browser": "true"
+      },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 800,
         messages: [{
           role: "user",
@@ -74,21 +80,35 @@ async function readFitxaAI(base64, mediaType) {
         }]
       })
     });
-    const data = await res.json();
-    const text = data.content?.map(b => b.text || "").join("") || "";
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
-  } catch(_) { return null; }
-}
 
-async function fetchMeteo(lat, lng) {
-  try {
-    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat +
-      "&longitude=" + lng +
-      "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode" +
-      "&timezone=Europe%2FMadrid&forecast_days=5";
-    const r = await fetch(url);
-    return await r.json();
-  } catch(_) { return null; }
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Error a l'API de Claude:", res.status, errText);
+      return null;
+    }
+
+    const data = await res.json();
+    console.log("Dades rebudes de l'API:", data);
+
+    let text = "";
+    if (data && Array.isArray(data.content)) {
+      text = data.content.map(b => b.text || "").join("");
+    } else if (data && data.text) {
+      text = data.text;
+    }
+
+    if (!text) {
+      console.error("L'API no ha retornat cap text analitzable.");
+      return null;
+    }
+
+    console.log("Resposta crua extreta:", text);
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
+
+  } catch(err) { 
+    console.error("Error crític en el procés de lectura de fitxa:", err);
+    return null; 
+  }
 }
 
 async function getRecomanacions(revisions) {
