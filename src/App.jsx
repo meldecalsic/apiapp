@@ -730,5 +730,5 @@ export default function App() {
     if (type === "apiari") {
       const nAp = apiaris.filter(a => a.id !== id);
       const nAr = arnes.filter(a => a.apiariId !== id);
-      const arIds = arnes.filter(a => a.apiariId === id).map(a => a.id);
-      const nRv = revisions.filter(r => !arIds.includes(r.arna
+    const arIds = arnes.filter(a => a.apiariId === id).map(a => a.id);
+  const nRv = revisions.filter(r => !arIds.includes(r.arna));
