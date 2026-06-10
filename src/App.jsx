@@ -45,11 +45,11 @@ const FITXA_PROMPT =
 async function readFitxaAI(base64, mediaType) {
   try {
     console.log("Iniciant petició d'anàlisi de fitxa a la IA...");
-    const res = await fetch("[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)", {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "x-api-key": "V1JlEpluelIuIZgf", 
+        "x-api-key": "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", 
         "anthropic-version": "2023-06-01",
         "anthropic-dangerously-allow-browser": "true"
       },
@@ -69,7 +69,7 @@ async function readFitxaAI(base64, mediaType) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("Error a l'API de Claude:", res.status, errText);
-      return null;
+      return { numero: null, error: "L'API ha rebutjat la petició" };
     }
 
     const data = await res.json();
@@ -82,20 +82,25 @@ async function readFitxaAI(base64, mediaType) {
       text = data.text;
     }
 
-    if (!text) {
+    if (!text || typeof text !== "string") {
       console.error("L'API no ha retornat cap text analitzable.");
-      return null;
+      return { numero: null, error: "Resposta buida de la IA" };
     }
 
     console.log("Resposta crua extreta:", text);
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
+    try {
+      const netejat = text.replace(/```json|```/g, "").trim();
+      return JSON.parse(netejat);
+    } catch (e) {
+      console.error("Error al parsejar el JSON de la IA", e);
+      return { numero: null, error: "Error de format en la resposta" };
+    }
 
   } catch(err) { 
     console.error("Error crític en el procés de lectura de fitxa:", err);
-    return null; 
+    return { numero: null, error: "Error de connexió" }; 
   }
 }
-
 async function fetchMeteo() {
   try {
     const r = await fetch("[https://api.open-meteo.com/v1/forecast?latitude=42.0&longitude=2.5&current=temperature_2m,relative_humidity_2m,weather_code&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto](https://api.open-meteo.com/v1/forecast?latitude=42.0&longitude=2.5&current=temperature_2m,relative_humidity_2m,weather_code&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto)");
