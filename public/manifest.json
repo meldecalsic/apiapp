@@ -1,0 +1,8 @@
+{
+  "name": "ApiariApp",
+  "short_name": "ApiariApp",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0800",
+  "theme_color": "#f5c842"
+}
