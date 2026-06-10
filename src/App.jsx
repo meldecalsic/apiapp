@@ -12,58 +12,49 @@ const AGRESS  = ["Calma total","La tipica pesada i prou","Pitjorflanes","M'agobi
 const TRACTA  = ["Cap","Varromed","Oxalic sublimacio","Apivar","Apitraz","Altres","Mes nuclei sanitat"];
 const REICOLOR= ["0 Blau","1 Blanc","2 Groc","3 Vermell","4 Verd","5 Blau","6 Blanc","7 Groc","8 Vermell","9 Verd"];
 const MONTHS  = ["Gener","Febrer","Marc","Abril","Maig","Juny","Juliol","Agost","Setembre","Octubre","Novembre","Desembre"];
-const FLORACIO= {0:"Avellaner, Ametller",1:"Ametller, Cirerer silvestre",2:"Cirerer, Prunera, Romani",3:"Taronger, Poma, Pera",4:"Romani, Salvia, Castanyer",5:"Castanyer, Tilia, Farigola",6:"Farigola, Esporgall, Girasol",7:"Girasol, Buguenvillea, Heura",8:"Heura, Arbustos tardor",9:"Heura, Boix",10:"Eucaliptus (costaneres)",11:"Repos hivernal"};
+const FLORACIO= {0:"Avellaner, Ametller",1:"Frutals, Romaní",2:"Farigola, Cirest",3:"Flors bosc, Alfalfa",4:"Castanyer, Sàlvia",5:"Girasol, Lavanda",6:"Girasol tardà",7:"Estepa, Bruc",8:"Aladern, Heura",9:"Floracions residuals",10:"Gens, Hivernada",11:"Gens, Parada"};
 
-const emptyReview = () => ({
-  date: new Date().toISOString().split("T")[0],
-  forcaColonia:2, quadresMel:0, pollen:2, quadresAbelles:5, quadresCria:3,
-  criaEstat:"Compacta", estatReina:0, cellesReials:0, anyReina:0,
-  varroaMes:new Date().getMonth(), varroaDia:new Date().getDate(), varroaPct:0,
-  tractamentMes:new Date().getMonth(), tipusTractament:0, quadresBuits:0, agressivitat:0, notes:""
-});
+const FITXA_PROMPT = 
+  "Ets un expert apicultor i analitzador d'imatges d'alta precisió. " +
+  "Estàs analitzant la foto d'una fitxa de plàstic blanc clavada a una arna de fusta. " +
+  "Aquesta fitxa funciona com una quadrícula on es claven xinxetes de colors per marcar l'estat de la colònia.\n\n" +
+  "INSTRUCCIONS DE RECONEIXEMENT:\n" +
+  "1. Identifica el número de l'arna: Sol estar escrit a FEINA O RETOLADOR directament sobre el plàstic blanc o a la fusta del costat.\n" +
+  "2. Identifica les xinxetes: Mira la posició de les xinxetes de colors (vermell, groc, blau, verd, blanc) dins els requadres o columnes escrites a la fitxa.\n" +
+  "3. Interpreta els valors segons la posició de la xinxeta en cada línia o paràmetre (Força, Cria, Abelles, Mel, Varroa).\n\n" +
+  "RETORNA EXCLUSIVAMENT un objecte JSON vàlid (sense markdown, sense blocs ```json, sense cap text extra). " +
+  "Si no estàs segur d'un valor numèric, fes una estimació lògica segons la posició visual. Camps requerits:\n" +
+  "{\n" +
+  "  \"numero\": (enter, número de l'arna detectat a la imatge, o null si és il·legible),\n" +
+  "  \"forcaColonia\": (enter de 0 a 4: 0=Molt feble, 1=Feble, 2=Normal, 3=Forta, 4=Molt forta),\n" +
+  "  \"quadresMel\": (enter de 0 a 20),\n" +
+  "  \"pollen\": (enter de 0 a 5: 0=Gens, 5=Moltíssim),\n" +
+  "  \"quadresAbelles\": (enter de 0 a 14),\n" +
+  "  \"quadresCria\": (enter de 0 to 10),\n" +
+  "  \"criaEstat\": (text, exactament un d'aquests tres: \"Compacta\", \"Pua\" o \"Dispersa\"),\n" +
+  "  \"estatReina\": (enter de 0 a 3: 0=Vista amb posta, 1=No vista posta, 2=Vista sense posta, 3=Ni vista ni posta),\n" +
+  "  \"cellesReials\": (enter de 0 a 30),\n" +
+  "  \"anyReina\": (enter de 0 a 9, color/número de l'any),\n" +
+  "  \"varroaPct\": (enter de 0 a 3: 0=0-1%, 1=2%, 2=3%, 3=Més de 3%),\n" +
+  "  \"tipusTractament\": (enter de 0 a 6: 0=Cap, 1=Varromed, 2=Oxàlic, 3=Apivar, 4=Apitraz, 5=Altres, 6=Nucli),\n" +
+  "  \"quadresBuits\": (enter de 0 a 14),\n" +
+  "  \"agressivitat\": (enter de 0 a 5)\n" +
+  "}";
 
-// ─── STORAGE ──────────────────────────────────────────────────────────────────
-const save = async (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch(_) {}
-  try { await _supa.from("app_data").upsert({ key, value: JSON.stringify(value) }, { onConflict: "key" }); } catch(_) {}
-};
-const load = async (key) => {
-  try {
-    const { data } = await _supa.from("app_data").select("value").eq("key", key).single();
-    if (data?.value) return JSON.parse(data.value);
-  } catch(_) {}
-  try { const v = localStorage.getItem(key); if (v) return JSON.parse(v); } catch(_) {}
-  return null;
-};
-const toBase64 = (file) => new Promise(res => {
-  const r = new FileReader();
-  r.onload = e => res(e.target.result.split(",")[1]);
-  r.readAsDataURL(file);
-});
-
-// ─── API ──────────────────────────────────────────────────────────────────────
-const FITXA_PROMPT =
-  "Ets un expert apicultor. Analitza la foto d'aquesta fitxa d'arna amb xinxetes de colors. " +
-  "Retorna NOMES un objecte JSON valid amb els camps: " +
-  "numero (enter, numero de l'arna o null), " +
-  "forcaColonia (0=molt feble a 4=molt forta), " +
-  "quadresMel (0-20), pollen (0=gens a 5=moltissim), " +
-  "quadresAbelles (0-14), quadresCria (0-10), " +
-  "criaEstat (exactament Compacta o Pua o Dispersa), " +
-  "estatReina (0=vista amb posta, 1=no vista posta, 2=vista sense posta, 3=ni vista ni posta), " +
-  "cellesReials (0-30), anyReina (0-9), " +
-  "varroaPct (0=0-1%, 1=2%, 2=3%, 3=mes de 3%), " +
-  "tipusTractament (0=cap, 1=varromed, 2=oxalic, 3=apivar, 4=apitraz, 5=altres, 6=nuclei), " +
-  "quadresBuits (0-14), agressivitat (0=calma total a 5=marxo). " +
-  "Nomes el JSON, sense markdown ni explicacions.";
-
+// ─── API WORKERS ──────────────────────────────────────────────────────────────
 async function readFitxaAI(base64, mediaType) {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    console.log("Iniciant petició d'anàlisi de fitxa a la IA...");
+    const res = await fetch("[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "x-api-key": "V1JlEpluelIuIZgf", 
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerously-allow-browser": "true"
+      },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 800,
         messages: [{
           role: "user",
@@ -74,1292 +65,308 @@ async function readFitxaAI(base64, mediaType) {
         }]
       })
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Error a l'API de Claude:", res.status, errText);
+      return null;
+    }
+
     const data = await res.json();
-    const text = data.content?.map(b => b.text || "").join("") || "";
+    console.log("Dades rebudes de l'API de Claude:", data);
+
+    let text = "";
+    if (data && Array.isArray(data.content)) {
+      text = data.content.map(b => b.text || "").join("");
+    } else if (data && data.text) {
+      text = data.text;
+    }
+
+    if (!text) {
+      console.error("L'API no ha retornat cap text analitzable.");
+      return null;
+    }
+
+    console.log("Resposta crua extreta:", text);
     return JSON.parse(text.replace(/```json|```/g, "").trim());
+
+  } catch(err) { 
+    console.error("Error crític en el procés de lectura de fitxa:", err);
+    return null; 
+  }
+}
+
+async function fetchMeteo() {
+  try {
+    const r = await fetch("[https://api.open-meteo.com/v1/forecast?latitude=42.0&longitude=2.5&current=temperature_2m,relative_humidity_2m,weather_code&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto](https://api.open-meteo.com/v1/forecast?latitude=42.0&longitude=2.5&current=temperature_2m,relative_humidity_2m,weather_code&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto)");
+    return r.ok ? await r.json() : null;
   } catch(_) { return null; }
 }
 
-async function fetchMeteo(lat, lng) {
-  try {
-    const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat +
-      "&longitude=" + lng +
-      "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode" +
-      "&timezone=Europe%2FMadrid&forecast_days=5";
-    const r = await fetch(url);
-    return await r.json();
-  } catch(_) { return null; }
-}
+// ─── COMPONENT PRINCIPAL ──────────────────────────────────────────────────────
+export default function App() {
+  const [apiaris, setApiaris] = useState([]);
+  const [arnes, setArnes] = useState([]);
+  const [revisions, setRevisions] = useState([]);
+  const [meteo, setMeteo] = useState(null);
 
-async function getRecomanacions(revisions) {
-  if (!revisions.length) return "Sense dades suficients.";
-  const last = revisions[revisions.length - 1];
-  const varroaLabels = ["0-1%", "2%", "3%", "mes de 3%"];
-  const prompt =
-    "Expert apicultor. Dona 3-4 recomanacions breus en catala per aquesta arna. " +
-    "Revisio " + last.date + ". " +
-    "Forca=" + FORCE[last.forcaColonia] + ", " +
-    "mel=" + last.quadresMel + "q, " +
-    "abelles=" + last.quadresAbelles + "q, " +
-    "cria=" + last.quadresCria + "q " + last.criaEstat + ", " +
-    "reina=" + REINA[last.estatReina] + ", " +
-    "celles reials=" + last.cellesReials + ", " +
-    "varroa=" + varroaLabels[last.varroaPct] + ", " +
-    "tractament=" + TRACTA[last.tipusTractament] + ". " +
-    "Format llista amb emojis.";
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 450,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-    const data = await res.json();
-    return data.content?.map(b => b.text || "").join("") || "Error.";
-  } catch(_) { return "Error de connexio."; }
-}
+  const [selApiari, setSelApiari] = useState(null);
+  const [selArna, setSelArna] = useState(null);
 
-// ─── STYLES ───────────────────────────────────────────────────────────────────
-const S = {
-  page:    { minHeight:"100vh", background:"linear-gradient(135deg,#0c0800,#1a1200 60%,#080f00)", color:"#fff", fontFamily:"Georgia,serif", fontSize:16 },
-  card:    { background:"rgba(255,245,180,0.04)", border:"1px solid rgba(255,200,50,0.12)", borderRadius:12, padding:16 },
-  input:   { width:"100%", padding:"10px 12px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,200,50,0.2)", borderRadius:8, color:"#fff", fontSize:16, boxSizing:"border-box", outline:"none", fontFamily:"inherit" },
-  label:   { color:"#d4a855", fontSize:13, fontWeight:700, letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:4 },
-  btnPri:  { padding:"12px 20px", background:"linear-gradient(135deg,#f5c842,#d4a020)", border:"none", borderRadius:8, color:"#1a0a00", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit" },
-  btnGhost:{ padding:"10px 16px", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#aaa", cursor:"pointer", fontFamily:"inherit", fontSize:13 },
-  btnGold: { padding:"11px 16px", background:"rgba(245,200,66,0.12)", border:"1px solid rgba(245,200,66,0.3)", borderRadius:8, color:"#f5c842", cursor:"pointer", fontFamily:"inherit", fontSize:14, fontWeight:600 },
-  btnBlue: { padding:"11px 16px", background:"rgba(100,180,255,0.12)", border:"1px solid rgba(100,180,255,0.3)", borderRadius:8, color:"#88bbff", cursor:"pointer", fontFamily:"inherit", fontSize:14, fontWeight:600 },
-  btnRed:  { padding:"10px 14px", background:"rgba(255,60,60,0.1)", border:"1px solid rgba(255,60,60,0.25)", borderRadius:8, color:"#ff8888", cursor:"pointer", fontFamily:"inherit", fontSize:14 },
-};
+  const [loading, setLoading] = useState(true);
+  const [scanLog, setScanLog] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
 
-// ─── MAPA LEAFLET ─────────────────────────────────────────────────────────────
-function LeafletMap({ lat, lng, height, onClick }) {
-  const containerRef = useRef(null);
-  const mapRef       = useRef(null);
-  const h = height || 180;
+  const fileInputRef = useRef(null);
+
+  // Formularis modals o vistes de creació
+  const [newApiName, setNewApiName] = useState("");
+  const [newApiLoc, setNewApiLoc] = useState("");
+  const [showAddApi, setShowAddApi] = useState(false);
+
+  const [newArnaNum, setNewArnaNum] = useState("");
+  const [showAddArna, setShowAddArna] = useState(false);
+
+  const [editRev, setEditRev] = useState(null);
 
   useEffect(() => {
-    if (!containerRef.current || !lat || !lng) return;
+    async function loadData() {
+      try {
+        const [a, b, c] = await Promise.all([
+          _supa.from("apiaris").select("*"),
+          _supa.from("arnes").select("*"),
+          _supa.from("revisions").select("*").order("date", { ascending: false })
+        ]);
+        setApiaris(a.data || []);
+        setArnes(b.data || []);
+        setRevisions(c.data || []);
+        const m = await fetchMeteo();
+        if (m) setMeteo(m);
+      } catch(e) { console.error(e); }
+      finally { setLoading(false); }
+    }
+    loadData();
+  }, []);
 
-    const buildMap = () => {
-      if (!window.L) return;
-      if (mapRef.current) {
-        mapRef.current.setView([lat, lng], 13);
+  const handleAddApiari = async () => {
+    if (!newApiName.trim()) return;
+    const { data } = await _supa.from("apiaris").insert([{ nom: newApiName, localitzacio: newApiLoc }]).select();
+    if (data) { setApiaris([...apiaris, data[0]]); setNewApiName(""); setNewApiLoc(""); setShowAddApi(false); }
+  };
+
+  const handleAddArna = async () => {
+    if (!newArnaNum || !selApiari) return;
+    const num = parseInt(newArnaNum);
+    const { data } = await _supa.from("arnes").insert([{ apiari_id: selApiari.id, numero: num }]).select();
+    if (data) { setArnes([...arnes, data[0]]); setNewArnaNum(""); setShowAddArna(false); }
+  };
+
+  const handleSaveRevision = async (formData) => {
+    if (!selArna) return;
+    if (editRev?.id) {
+      const { data } = await _supa.from("revisions").update(formData).eq("id", editRev.id).select();
+      if (data) {
+        setRevisions(revisions.map(r => r.id === editRev.id ? data[0] : r));
+        setEditRev(null);
+      }
+    } else {
+      const { data } = await _supa.from("revisions").insert([{ ...formData, arna_id: selArna.id }]).select();
+      if (data) {
+        setRevisions([data[0], ...revisions]);
+        setEditRev(null);
+      }
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDel) return;
+    const { type, id } = confirmDel;
+    if (type === "apiari") {
+      await _supa.from("apiaris").delete().eq("id", id);
+      setApiaris(apiaris.filter(x => x.id !== id));
+      if (selApiari?.id === id) setSelApiari(null);
+    } else if (type === "arna") {
+      await _supa.from("arnes").delete().eq("id", id);
+      setArnes(arnes.filter(x => x.id !== id));
+      if (selArna?.id === id) setSelArna(null);
+    } else if (type === "revisio") {
+      await _supa.from("revisions").delete().eq("id", id);
+      setRevisions(revisions.filter(x => x.id !== id));
+    }
+    setConfirmDel(null);
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !selApiari) return;
+    setScanLog("Processant imatge de la fitxa...");
+    
+    const r = new FileReader();
+    r.onloadend = async () => {
+      const b64 = r.result.split(",")[1];
+      setScanLog("Analitzant marques i xinxetes amb Claude AI...");
+      const parsed = await readFitxaAI(b64, file.type);
+      
+      if (!parsed) {
+        setScanLog("Error: No s'ha pogut desxifrar la fitxa. Comprova la llum o el prompt.");
         return;
       }
-      const map = window.L.map(containerRef.current, { scrollWheelZoom: false })
-        .setView([lat, lng], 13);
-      window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 })
-        .addTo(map);
-      const marker = window.L.marker([lat, lng], { draggable: !!onClick }).addTo(map);
-      if (onClick) {
-        map.on("click", e => onClick(e.latlng.lat, e.latlng.lng));
-        marker.on("dragend", e => {
-          const ll = e.target.getLatLng();
-          onClick(ll.lat, ll.lng);
-        });
-      }
-      mapRef.current = map;
-    };
 
-    if (window.L) {
-      buildMap();
-    } else {
-      if (!document.getElementById("lf-css")) {
-        const lnk = document.createElement("link");
-        lnk.id = "lf-css"; lnk.rel = "stylesheet";
-        lnk.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
-        document.head.appendChild(lnk);
-      }
-      if (!document.getElementById("lf-js")) {
-        const sc = document.createElement("script");
-        sc.id = "lf-js";
-        sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
-        sc.onload = buildMap;
-        document.head.appendChild(sc);
-      }
-    }
-
-    return () => {
-      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
-    };
-  }, [lat, lng, onClick]);
-
-  if (!lat || !lng) return null;
-  return (
-    <div style={{ marginTop:10 }}>
-      <div ref={containerRef} style={{ height:h, borderRadius:8, overflow:"hidden", background:"#1a1800" }} />
-      <a href={"https://maps.google.com/?q=" + lat + "," + lng}
-        target="_blank" rel="noreferrer"
-        style={{ color:"#88bbff", fontSize:11, display:"block", marginTop:4, textDecoration:"none" }}>
-        Obrir a Google Maps
-      </a>
-    </div>
-  );
-}
-
-// ─── LOCATION PICKER ──────────────────────────────────────────────────────────
-function LocationPicker({ lat, lng, onChange }) {
-  const [gpsLoad, setGpsLoad] = useState(false);
-  const [gpsErr,  setGpsErr]  = useState("");
-
-  const getGPS = () => {
-    setGpsLoad(true); setGpsErr("");
-    if (!navigator.geolocation) { setGpsErr("GPS no disponible"); setGpsLoad(false); return; }
-    navigator.geolocation.getCurrentPosition(
-      pos => { onChange(pos.coords.latitude.toFixed(6), pos.coords.longitude.toFixed(6)); setGpsLoad(false); },
-      ()  => { setGpsErr("No s'ha pogut obtenir la ubicacio"); setGpsLoad(false); }
-    );
-  };
-
-  const mapClick = useCallback((la, lo) => onChange(la.toFixed(6), lo.toFixed(6)), [onChange]);
-
-  return (
-    <div>
-      <div style={{ display:"flex", gap:8, alignItems:"flex-end", marginBottom:8 }}>
-        <div style={{ flex:1 }}>
-          <label style={S.label}>Latitud</label>
-          <input type="number" step="0.000001" value={lat} onChange={e => onChange(e.target.value, lng)} style={S.input} placeholder="41.9834" />
-        </div>
-        <div style={{ flex:1 }}>
-          <label style={S.label}>Longitud</label>
-          <input type="number" step="0.000001" value={lng} onChange={e => onChange(lat, e.target.value)} style={S.input} placeholder="2.1234" />
-        </div>
-        <button onClick={getGPS} disabled={gpsLoad} style={S.btnGold}>
-          {gpsLoad ? "..." : "GPS"}
-        </button>
-      </div>
-      {gpsErr && <p style={{ color:"#ff8888", fontSize:11, margin:"0 0 6px" }}>{gpsErr}</p>}
-      {lat && lng && (
-        <LeafletMap lat={parseFloat(lat)} lng={parseFloat(lng)} height={180} onClick={mapClick} />
-      )}
-      {(!lat || !lng) && (
-        <p style={{ color:"#5a4a2a", fontSize:11 }}>Usa el GPS o escriu les coordenades. Tambe pots fer clic al mapa un cop aparegui.</p>
-      )}
-    </div>
-  );
-}
-
-// ─── METEO WIDGET ─────────────────────────────────────────────────────────────
-function MeteoWidget({ lat, lng }) {
-  const [meteo, setMeteo] = useState(null);
-  useEffect(() => {
-    if (!lat || !lng) return;
-    fetchMeteo(lat, lng).then(setMeteo);
-  }, [lat, lng]);
-
-  const icon = c => c === 0 ? "sol" : c <= 3 ? "nuvolat" : c <= 48 ? "boires" : c <= 67 ? "pluja" : c <= 77 ? "neu" : "tempesta";
-  const wicons = { "sol":"☀️", "nuvolat":"⛅", "boires":"🌫️", "pluja":"🌧️", "neu":"❄️", "tempesta":"⛈️" };
-
-  if (!lat || !lng) return null;
-  return (
-    <div style={{ marginTop:12 }}>
-      <div style={{ color:"#88bbee", fontSize:12, fontWeight:600, marginBottom:8 }}>Previsio meteorologica</div>
-      {meteo?.daily && (
-        <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:4 }}>
-          {meteo.daily.time?.slice(0, 5).map((d, i) => (
-            <div key={i} style={{ minWidth:54, textAlign:"center", background:"rgba(0,0,0,0.2)", borderRadius:8, padding:"6px 4px" }}>
-              <div style={{ color:"#7a6040", fontSize:9 }}>{new Date(d).toLocaleDateString("ca", { weekday:"short" })}</div>
-              <div style={{ fontSize:18, margin:"3px 0" }}>{wicons[icon(meteo.daily.weathercode?.[i])]}</div>
-              <div style={{ color:"#f5c842", fontSize:11, fontWeight:600 }}>{Math.round(meteo.daily.temperature_2m_max?.[i])}°</div>
-              <div style={{ color:"#557755", fontSize:10 }}>{Math.round(meteo.daily.temperature_2m_min?.[i])}°</div>
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{ marginTop:8, padding:"6px 10px", background:"rgba(80,140,60,0.1)", borderRadius:6, border:"1px solid rgba(80,140,60,0.2)", fontSize:12 }}>
-        <span style={{ color:"#7ac87a" }}>Floracio: </span>
-        <span style={{ color:"#a8d8a8" }}>{FLORACIO[new Date().getMonth()]}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── FORMULARI REVISIO ────────────────────────────────────────────────────────
-function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact }) {
-  const [f, setF] = useState(initial || emptyReview());
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-
-  useEffect(() => { if (initial) setF({ ...emptyReview(), ...initial }); }, [JSON.stringify(initial)]);
-
-  const Slider = ({ lbl, field, min, max, opts }) => (
-    <div style={{ marginBottom:14 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-        <span style={{ color:"#d4a855", fontSize:11, fontWeight:700 }}>{lbl}</span>
-        <span style={{ color:"#f5c842", fontSize:12, fontWeight:600 }}>{opts ? opts[f[field]] : f[field]}</span>
-      </div>
-      <input type="range" min={min} max={max} value={f[field]}
-        onChange={e => set(field, +e.target.value)}
-        style={{ width:"100%", accentColor:"#f5c842" }} />
-      {opts && (
-        <div style={{ display:"flex", justifyContent:"space-between", marginTop:2 }}>
-          <span style={{ color:"#5a4a2a", fontSize:9 }}>{opts[0]}</span>
-          <span style={{ color:"#5a4a2a", fontSize:9 }}>{opts[opts.length-1]}</span>
-        </div>
-      )}
-    </div>
-  );
-
-  const Sel = ({ lbl, field, opts }) => (
-    <div style={{ marginBottom:12 }}>
-      <label style={S.label}>{lbl}</label>
-      <select value={f[field]}
-        onChange={e => set(field, isNaN(+e.target.value) ? e.target.value : +e.target.value)}
-        style={{ ...S.input, background:"#100c00" }}>
-        {opts.map((o, i) => (
-          <option key={i} value={typeof f[field] === "string" ? o : i}>{o}</option>
-        ))}
-      </select>
-    </div>
-  );
-
-  const Num = ({ lbl, field, min, max }) => (
-    <div style={{ marginBottom:12 }}>
-      <label style={S.label}>{lbl}</label>
-      <input type="number" min={min} max={max} value={f[field]}
-        onChange={e => set(field, +e.target.value)} style={S.input} />
-    </div>
-  );
-
-  return (
-    <div style={{ maxHeight: compact ? "none" : "72vh", overflowY: compact ? "visible" : "auto", paddingRight: compact ? 0 : 4 }}>
-      {!compact && <h3 style={{ color:"#f5c842", margin:"0 0 14px", fontSize:15 }}>Revisio Arna #{arnaNumero}</h3>}
-      <div style={{ marginBottom:12 }}>
-        <label style={S.label}>Data revisio</label>
-        <input type="date" value={f.date} onChange={e => set("date", e.target.value)} style={S.input} />
-      </div>
-      <Slider lbl="Forca colonia" field="forcaColonia" min={0} max={4} opts={FORCE} />
-      <Slider lbl="Pol.len"       field="pollen"       min={0} max={5} opts={POLLEN} />
-      <Slider lbl="Agressivitat"  field="agressivitat" min={0} max={5} opts={AGRESS} />
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"0 8px" }}>
-        <Num lbl="Quadres mel"    field="quadresMel"    min={0} max={20} />
-        <Num lbl="Quadres abelles"field="quadresAbelles"min={0} max={14} />
-        <Num lbl="Quadres cria"   field="quadresCria"   min={0} max={14} />
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 8px" }}>
-        <Num lbl="Quadres buits"  field="quadresBuits"  min={0} max={14} />
-        <Num lbl="Cel.les reials" field="cellesReials"  min={0} max={30} />
-      </div>
-      <Sel lbl="Estat cria"   field="criaEstat"   opts={["Compacta","Pua","Dispersa"]} />
-      <Sel lbl="Estat reina"  field="estatReina"  opts={REINA} />
-      <Sel lbl="Any reina"    field="anyReina"    opts={REICOLOR} />
-      <div style={{ background:"rgba(255,50,50,0.05)", border:"1px solid rgba(255,80,80,0.15)", borderRadius:10, padding:12, marginBottom:12 }}>
-        <p style={{ color:"#ff8888", fontSize:11, fontWeight:700, margin:"0 0 10px" }}>VARROA</p>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 8px" }}>
-          <div style={{ marginBottom:12 }}>
-            <label style={S.label}>Mes prova</label>
-            <select value={f.varroaMes} onChange={e => set("varroaMes", +e.target.value)}
-              style={{ ...S.input, background:"#100000" }}>
-              {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select>
-          </div>
-          <Num lbl="Dia prova" field="varroaDia" min={1} max={31} />
-        </div>
-        <Slider lbl="% Varroa" field="varroaPct" min={0} max={3} opts={["0-1%","2%","3%","Mes de 3%"]} />
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 8px" }}>
-          <div style={{ marginBottom:12 }}>
-            <label style={S.label}>Mes tractament</label>
-            <select value={f.tractamentMes} onChange={e => set("tractamentMes", +e.target.value)}
-              style={{ ...S.input, background:"#100000" }}>
-              {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select>
-          </div>
-          <Sel lbl="Tipus tractament" field="tipusTractament" opts={TRACTA} />
-        </div>
-      </div>
-      <div style={{ marginBottom:14 }}>
-        <label style={S.label}>Notes</label>
-        <textarea value={f.notes} onChange={e => set("notes", e.target.value)}
-          rows={2} style={{ ...S.input, resize:"vertical" }} />
-      </div>
-      <div style={{ display:"flex", gap:8 }}>
-        <button onClick={() => onSave(f)} disabled={loading}
-          style={{ ...S.btnPri, flex:1 }}>
-          {loading ? "Guardant..." : (compact ? "Aplicar canvis" : "Guardar revisio")}
-        </button>
-        {onCancel && <button onClick={onCancel} style={S.btnGhost}>Cancel.lar</button>}
-      </div>
-    </div>
-  );
-}
-
-// ─── BULK PROCESSOR ───────────────────────────────────────────────────────────
-function BulkProcessor({ apiariArnes, onComplete, onClose }) {
-  const [items,      setItems]      = useState([]);
-  const [phase,      setPhase]      = useState("select");
-  const [currentIdx, setCurrentIdx] = useState(0);
-
-  const addFiles = files => {
-    const news = Array.from(files).map(f => ({
-      id:       "img_" + Date.now() + "_" + Math.random().toString(36).slice(2),
-      file:     f,
-      preview:  URL.createObjectURL(f),
-      status:   "pendent",
-      result:   null,
-      formData: emptyReview(),
-      mode:     "auto",
-      arnaId:   null,
-      arnaNum:  null,
-    }));
-    setItems(p => [...p, ...news]);
-  };
-
-  const removeItem = id => setItems(p => p.filter(i => i.id !== id));
-  const updateItem = (id, ch) => setItems(p => p.map(it => it.id === id ? { ...it, ...ch } : it));
-
-  const processAll = async () => {
-    setPhase("processing");
-    for (let i = 0; i < items.length; i++) {
-      setCurrentIdx(i);
-      setItems(p => p.map((it, idx) => idx === i ? { ...it, status:"analitzant" } : it));
-      try {
-        const b64    = await toBase64(items[i].file);
-        const result = await readFitxaAI(b64, items[i].file.type);
-        if (result) {
-          const matched = result.numero ? apiariArnes.find(a => a.numero === result.numero) : null;
-          const { numero, ...rest } = result;
-          setItems(p => p.map((it, idx) => idx === i ? {
-            ...it, status:"fet", result,
-            formData: { ...emptyReview(), ...rest },
-            arnaId:  matched?.id || null,
-            arnaNum: numero || null,
-            mode:    matched ? "revision" : "nova",
-          } : it));
-        } else {
-          setItems(p => p.map((it, idx) => idx === i ? { ...it, status:"error" } : it));
+      let targetArna = arnes.find(a => a.apiari_id === selApiari.id && a.numero === parsed.numero);
+      if (!targetArna && parsed.numero) {
+        setScanLog(`Arna #${parsed.numero} no trobada. Creant-la automàticament...`);
+        const { data } = await _supa.from("arnes").insert([{ apiari_id: selApiari.id, numero: parsed.numero }]).select();
+        if (data) {
+          targetArna = data[0];
+          setArnes(prev => [...prev, data[0]]);
         }
-      } catch(_) {
-        setItems(p => p.map((it, idx) => idx === i ? { ...it, status:"error" } : it));
       }
-    }
-    setPhase("review");
+
+      if (!targetArna) {
+        setScanLog("Error crític: No s'ha detectat cap número d'arna ni existia prèviament.");
+        return;
+      }
+
+      setScanLog("Guardant revisió intel·ligent a la base de dades...");
+      const revObj = {
+        arna_id: targetArna.id,
+        date: new Date().toISOString().split("T")[0],
+        forcaColonia: parsed.forcaColonia ?? 2,
+        quadresMel: parsed.quadresMel ?? 0,
+        pollen: parsed.pollen ?? 0,
+        quadresAbelles: parsed.quadresAbelles ?? 0,
+        quadresCria: parsed.quadresCria ?? 0,
+        criaEstat: parsed.criaEstat || "Compacta",
+        estatReina: parsed.estatReina ?? 3,
+        cellesReials: parsed.cellesReials ?? 0,
+        anyReina: parsed.anyReina ?? 0,
+        varroaPct: parsed.varroaPct ?? 0,
+        tipusTractament: parsed.tipusTractament ?? 0,
+        quadresBuits: parsed.quadresBuits ?? 0,
+        agressivitat: parsed.agressivitat ?? 0,
+        observacions: "Escanejat automàtic amb intel·ligència artificial."
+      };
+
+      const { data: nRev } = await _supa.from("revisions").insert([revObj).select();
+      if (nRev) {
+        setRevisions(prev => [nRev[0], ...prev]);
+        setSelArna(targetArna);
+        setScanLog(`✓ Fitxa de l'Arna #${targetArna.numero} carregada amb èxit!`);
+      } else {
+        setScanLog("Error en desar la revisió a Supabase.");
+      }
+    };
+    r.readAsDataURL(file);
   };
 
-  const readyCount = items.filter(it =>
-    it.status === "fet" && it.mode !== "skip" &&
-    (it.arnaId || (it.mode === "nova" && it.arnaNum))
-  ).length;
+  if (loading) return <div style={S.loading}>Carregant quadre d'apicultura... 🐝</div>;
 
-  const saveAll = () => onComplete(items.filter(it =>
-    it.status === "fet" && it.mode !== "skip" &&
-    (it.arnaId || (it.mode === "nova" && it.arnaNum))
-  ));
-
-  const pct = items.length
-    ? Math.round(items.filter(i => i.status === "fet" || i.status === "error").length / items.length * 100)
-    : 0;
-
-  if (phase === "select") return (
-    <div style={{ ...S.page, position:"fixed", inset:0, zIndex:1000, overflowY:"auto", padding:"0 14px 40px" }}>
-      <div style={{ maxWidth:700, margin:"0 auto" }}>
-        <div style={{ padding:"18px 0 14px", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid rgba(255,200,50,0.08)" }}>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#f5c842", cursor:"pointer", fontSize:22, padding:0 }}>←</button>
-          <div>
-            <h2 style={{ margin:0, color:"#f5c842", fontSize:19 }}>Analitzar fitxes</h2>
-            <p style={{ margin:0, color:"#7a6040", fontSize:11 }}>La IA llegira cada fitxa automaticament</p>
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, margin:"20px 0 16px" }}>
-          <div style={{ position:"relative", ...S.btnBlue, padding:"18px 12px", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:6, borderRadius:8, overflow:"hidden" }}>
-            <span style={{ fontSize:36 }}>📷</span>
-            <span style={{ fontWeight:700, fontSize:15 }}>Fer foto</span>
-            <span style={{ fontSize:12, opacity:0.7 }}>Camera directa</span>
-            <input type="file" accept="image/*" capture="environment"
-              onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ""; }}
-              style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", fontSize:0 }} />
-          </div>
-          <div style={{ position:"relative", ...S.btnGold, padding:"18px 12px", textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:6, borderRadius:8, overflow:"hidden" }}>
-            <span style={{ fontSize:36 }}>🖼️</span>
-            <span style={{ fontWeight:700, fontSize:15 }}>Galeria</span>
-            <span style={{ fontSize:12, opacity:0.7 }}>Selecciona multiples</span>
-            <input type="file" accept="image/*" multiple
-              onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ""; }}
-              style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", fontSize:0 }} />
-          </div>
-        </div>
-
-        {items.length > 0 && (
-          <div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(88px,1fr))", gap:8, marginBottom:16 }}>
-              {items.map((it, i) => (
-                <div key={it.id} style={{ position:"relative", borderRadius:8, overflow:"hidden", aspectRatio:"1", background:"#1a1200" }}>
-                  <img src={it.preview} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                  <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.65)", padding:"2px 4px", fontSize:10, color:"#f5c842", textAlign:"center" }}>Foto {i+1}</div>
-                  <button onClick={() => removeItem(it.id)}
-                    style={{ position:"absolute", top:4, right:4, background:"rgba(0,0,0,0.75)", border:"none", borderRadius:"50%", color:"#fff", width:22, height:22, cursor:"pointer", fontSize:12, padding:0 }}>
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button onClick={processAll} style={{ ...S.btnPri, width:"100%", fontSize:15, padding:"14px" }}>
-              Analitzar {items.length} {items.length === 1 ? "foto" : "fotos"} amb IA
-            </button>
-          </div>
-        )}
-        {items.length === 0 && (
-          <div style={{ textAlign:"center", padding:"50px 20px", color:"#5a4a2a" }}>
-            <div style={{ fontSize:52, marginBottom:12 }}>📷</div>
-            <p style={{ fontSize:14, color:"#7a6040" }}>Afegeix fotos de les fitxes per analitzar-les</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (phase === "processing") return (
-    <div style={{ ...S.page, position:"fixed", inset:0, zIndex:1000, overflowY:"auto", padding:"0 14px 40px" }}>
-      <div style={{ maxWidth:700, margin:"0 auto" }}>
-        <div style={{ padding:"18px 0 14px", borderBottom:"1px solid rgba(255,200,50,0.08)" }}>
-          <h2 style={{ margin:0, color:"#f5c842", fontSize:19 }}>Analitzant fitxes...</h2>
-          <p style={{ margin:"4px 0 0", color:"#7a6040", fontSize:11 }}>Foto {Math.min(currentIdx+1,items.length)} de {items.length}</p>
-        </div>
-        <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:8, height:8, margin:"16px 0", overflow:"hidden" }}>
-          <div style={{ height:"100%", background:"linear-gradient(90deg,#f5c842,#d4a020)", borderRadius:8, width: pct + "%", transition:"width 0.5s" }} />
-        </div>
-        {items.map((it, i) => (
-          <div key={it.id} style={{ ...S.card, marginBottom:8, display:"flex", alignItems:"center", gap:12, padding:12 }}>
-            <img src={it.preview} alt="" style={{ width:52, height:52, objectFit:"cover", borderRadius:8, flexShrink:0 }} />
-            <div style={{ flex:1 }}>
-              <div style={{ color:"#f5e8a0", fontSize:13, fontWeight:600 }}>Foto {i+1}</div>
-              <div style={{ fontSize:12, marginTop:2, color: it.status==="fet" ? "#80c880" : it.status==="error" ? "#ff8888" : it.status==="analitzant" ? "#f5c842" : "#5a4a2a" }}>
-                {it.status==="pendent" ? "Pendent" : it.status==="analitzant" ? "Analitzant..." : it.status==="fet" ? "Llegida correctament" : "No s'ha pogut llegir"}
-              </div>
-              {it.status==="fet" && it.result?.numero && (
-                <div style={{ color:"#f5c842", fontSize:11 }}>Arna #{it.result.numero} detectada</div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  // review
-  return (
-    <div style={{ ...S.page, position:"fixed", inset:0, zIndex:1000, overflowY:"auto", padding:"0 14px 40px" }}>
-      <div style={{ maxWidth:700, margin:"0 auto" }}>
-        <div style={{ padding:"18px 0 14px", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid rgba(255,200,50,0.08)" }}>
-          <button onClick={() => setPhase("select")} style={{ background:"none", border:"none", color:"#f5c842", cursor:"pointer", fontSize:22, padding:0 }}>←</button>
-          <div style={{ flex:1 }}>
-            <h2 style={{ margin:0, color:"#f5c842", fontSize:19 }}>Repassa els resultats</h2>
-            <p style={{ margin:0, color:"#7a6040", fontSize:11 }}>{readyCount} entrades a guardar</p>
-          </div>
-          <button onClick={saveAll} disabled={readyCount === 0}
-            style={{ ...S.btnPri, opacity: readyCount === 0 ? 0.4 : 1 }}>
-            Guardar
-          </button>
-        </div>
-
-        {items.map((it, i) => (
-          <div key={it.id} style={{ ...S.card, marginTop:14 }}>
-            <div style={{ display:"flex", gap:10, marginBottom:12, alignItems:"flex-start" }}>
-              <img src={it.preview} alt="" style={{ width:64, height:64, objectFit:"cover", borderRadius:8, flexShrink:0 }} />
-              <div style={{ flex:1 }}>
-                <div style={{ color:"#f5e8a0", fontWeight:700, fontSize:14 }}>Foto {i+1}</div>
-                {it.status==="error"
-                  ? <div style={{ color:"#ff8888", fontSize:12 }}>No s'ha pogut llegir</div>
-                  : <div style={{ color:"#80c880", fontSize:12 }}>Llegida correctament{it.result?.numero ? " — Arna #"+it.result.numero : ""}</div>
-                }
-              </div>
-              <select value={it.mode}
-                onChange={e => updateItem(it.id, { mode:e.target.value, arnaId: e.target.value==="nova" ? null : it.arnaId })}
-                style={{ ...S.input, width:"auto", fontSize:11, padding:"6px 8px", background:"#1a1400", flexShrink:0 }}>
-                <option value="revision">Revisio</option>
-                <option value="nova">Nova arna</option>
-                <option value="skip">Saltar</option>
-              </select>
-            </div>
-
-            {it.status==="fet" && it.mode !== "skip" && (
-              <div>
-                {it.mode === "revision" ? (
-                  <div style={{ marginBottom:12 }}>
-                    <label style={S.label}>Assignar a l'arna</label>
-                    <select value={it.arnaId || ""}
-                      onChange={e => updateItem(it.id, { arnaId: e.target.value || null })}
-                      style={{ ...S.input, background:"#1a1400" }}>
-                      <option value="">-- Selecciona arna --</option>
-                      {apiariArnes.sort((a,b) => a.numero - b.numero).map(a => (
-                        <option key={a.id} value={a.id}>Arna #{a.numero}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom:12 }}>
-                    <label style={S.label}>Numero nova arna</label>
-                    <input type="number" value={it.arnaNum || ""}
-                      onChange={e => updateItem(it.id, { arnaNum: +e.target.value })}
-                      style={S.input} placeholder="Ex: 15" />
-                  </div>
-                )}
-                <details>
-                  <summary style={{ color:"#d4a855", fontSize:12, cursor:"pointer", fontWeight:600, padding:"6px 0" }}>
-                    Revisar i editar les dades
-                  </summary>
-                  <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,200,50,0.08)" }}>
-                    <ReviewForm
-                      arnaNumero={it.arnaNum}
-                      initial={it.formData}
-                      onSave={fd => updateItem(it.id, { formData: fd })}
-                      onCancel={null}
-                      loading={false}
-                      compact={true}
-                    />
-                  </div>
-                </details>
-              </div>
-            )}
-          </div>
-        ))}
-        <button onClick={saveAll} disabled={readyCount === 0}
-          style={{ ...S.btnPri, width:"100%", marginTop:16, fontSize:15, padding:"14px", opacity: readyCount === 0 ? 0.4 : 1 }}>
-          Guardar {readyCount} {readyCount === 1 ? "entrada" : "entrades"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── DETALL ARNA ──────────────────────────────────────────────────────────────
-function ArnaDetail({ arna, revisions, onAddRevision, onBack }) {
-  const [tab,       setTab]       = useState("resum");
-  const [showForm,  setShowForm]  = useState(false);
-  const [aiPrefill, setAiPrefill] = useState(null);
-  const [aiLoad,    setAiLoad]    = useState(false);
-  const [saveLoad,  setSaveLoad]  = useState(false);
-  const [recs,      setRecs]      = useState("");
-  const [recLoad,   setRecLoad]   = useState(false);
-
-  const sorted = [...revisions].sort((a, b) => a.date.localeCompare(b.date));
-  const last   = sorted[sorted.length - 1];
-  const chartData = sorted.map(r => ({
-    d:      r.date.slice(5),
-    forca:  r.forcaColonia,
-    mel:    r.quadresMel,
-    abelles:r.quadresAbelles,
-    cria:   r.quadresCria,
-    varroa: r.varroaPct,
-  }));
-
-  const handlePhoto = async file => {
-    if (!file) return;
-    setAiLoad(true);
-    const b64    = await toBase64(file);
-    const result = await readFitxaAI(b64, file.type);
-    if (result) {
-      const { numero, ...rest } = result;
-      setAiPrefill({ ...emptyReview(), ...rest });
-    } else {
-      setAiPrefill(null);
-    }
-    setShowForm(true);
-    setAiLoad(false);
-  };
-
-  const handleSave = async data => {
-    setSaveLoad(true);
-    await onAddRevision({ ...data, arnaId: arna.id, id: "r_" + Date.now() });
-    setShowForm(false);
-    setAiPrefill(null);
-    setSaveLoad(false);
-  };
-
-  const T = t => ({
-    padding:"8px 14px", border:"none", cursor:"pointer", fontFamily:"inherit", fontWeight:600, fontSize:12,
-    background: tab===t ? "rgba(245,200,66,0.15)" : "transparent",
-    color:      tab===t ? "#f5c842" : "#6b5a3a",
-    borderBottom: "2px solid " + (tab===t ? "#f5c842" : "transparent"),
-  });
+  const currentMonth = new Date().getMonth();
+  const arnesFiltrades = arnes.filter(a => a.apiari_id === selApiari?.id);
+  const revsDeLArna = revisions.filter(r => r.arna_id === selArna?.id);
 
   return (
-    <div style={S.page}>
-      <div style={{ maxWidth:700, margin:"0 auto", padding:"0 14px 40px" }}>
-        {/* Header */}
-        <div style={{ padding:"18px 0 14px", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid rgba(255,200,50,0.08)" }}>
-          <button onClick={onBack} style={{ background:"none", border:"none", color:"#f5c842", cursor:"pointer", fontSize:22, padding:0 }}>←</button>
-          <div style={{ flex:1 }}>
-            <h2 style={{ margin:0, color:"#f5c842", fontSize:20 }}>Arna #{arna.numero}</h2>
-            <p style={{ margin:0, color:"#7a6040", fontSize:11 }}>Creada {arna.dataCreacio} · {revisions.length} revisions</p>
+    <div style={S.app}>
+      {/* HEADER */}
+      <header style={S.header}>
+        <div style={S.headerLeft}>
+          <span style={{ fontSize:32 }}>🐝</span>
+          <div>
+            <h1 style={S.title}>Apitrack Pro</h1>
+            <p style={S.subtitle}>Gestió Apícola i Revisions Intel·ligents</p>
           </div>
         </div>
+        {meteo && (
+          <div style={S.meteoWidget}>
+            <div style={{ fontSize:22 }}>☀️</div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontWeight:700, fontSize:14 }}>{meteo.current.temperature_2m}°C</div>
+              <div style={{ fontSize:10, color:"#a69b85" }}>Humitat: {meteo.current.relative_humidity_2m}%</div>
+            </div>
+          </div>
+        )}
+      </header>
 
-        {/* Botons foto/manual - LABEL pattern per maxima compatibilitat mobil */}
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", margin:"14px 0 12px" }}>
-          {aiLoad ? (
-            <span style={{ color:"#f5c842", fontSize:13, alignSelf:"center" }}>Llegint fitxa amb IA...</span>
-          ) : (
-            <>
-              <div style={{ position:"relative", ...S.btnBlue, display:"inline-flex", alignItems:"center", gap:6, overflow:"hidden" }}>
-                📷 Fer foto
-                <input type="file" accept="image/*" capture="environment"
-                  onChange={e => { if (e.target.files?.[0]) handlePhoto(e.target.files[0]); e.target.value = ""; }}
-                  style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", fontSize:0 }} />
-              </div>
-              <div style={{ position:"relative", ...S.btnGold, display:"inline-flex", alignItems:"center", gap:6, overflow:"hidden" }}>
-                🖼️ Pujar foto
-                <input type="file" accept="image/*"
-                  onChange={e => { if (e.target.files?.[0]) handlePhoto(e.target.files[0]); e.target.value = ""; }}
-                  style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", fontSize:0 }} />
-              </div>
-              <button onClick={() => { setAiPrefill(null); setShowForm(s => !s); }} style={S.btnGold}>
-                ✏️ Manual
-              </button>
-            </>
+      {/* BANNER FLORACIÓ */}
+      <div style={S.floraBanner}>
+        <span style={{ marginRight:8 }}>🌸</span>
+        <strong>Floració estimada ({MONTHS[currentMonth]}):</strong> {FLORACIO[currentMonth] || "Sense dades"}
+      </div>
+
+      <div style={S.mainLayout}>
+        {/* COLUMNA ESQUERRA: APIARIS */}
+        <div style={S.sidebar}>
+          <div style={S.sectionHeader}>
+            <h2 style={S.sectionTitle}>Els teus Apiaris</h2>
+            <button onClick={() => setShowAddApi(!showAddApi)} style={S.addBtn}>{showAddApi ? "Tancar" : "+ Nou"}</button>
+          </div>
+
+          {showAddApi && (
+            <div style={S.miniForm}>
+              <input value={newApiName} onChange={e => setNewApiName(e.target.value)} placeholder="Nom de l'apiari..." style={S.input}/>
+              <input value={newApiLoc} onChange={e => setNewApiLoc(e.target.value)} placeholder="Ubicació / Coordenades..." style={S.input}/>
+              <button onClick={handleAddApiari} style={S.submitBtn}>Guardar Apiari</button>
+            </div>
           )}
-        </div>
 
-        {showForm && (
-          <div style={{ ...S.card, marginBottom:14 }}>
-            {aiPrefill && (
-              <div style={{ background:"rgba(80,200,80,0.08)", border:"1px solid rgba(80,200,80,0.2)", borderRadius:6, padding:"8px 12px", marginBottom:12, fontSize:12, color:"#80c880" }}>
-                Dades extretes de la foto — revisa i corregeix si cal
-              </div>
-            )}
-            <ReviewForm
-              arnaNumero={arna.numero}
-              initial={aiPrefill}
-              onSave={handleSave}
-              onCancel={() => { setShowForm(false); setAiPrefill(null); }}
-              loading={saveLoad}
-            />
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div style={{ display:"flex", borderBottom:"1px solid rgba(255,200,50,0.08)", marginBottom:16 }}>
-          {["resum","grafics","historial"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={T(t)}>
-              {t === "resum" ? "Resum" : t === "grafics" ? "Grafics" : "Historial"}
-            </button>
-          ))}
-        </div>
-
-        {tab === "resum" && !last && (
-          <p style={{ color:"#6b5a3a", textAlign:"center", marginTop:40 }}>Sense revisions. Usa els botons de dalt per afegir-ne una.</p>
-        )}
-
-        {tab === "resum" && last && (
-          <div>
-            {last.cellesReials > 0 && (
-              <div style={{ background:"rgba(255,120,40,0.1)", border:"1px solid rgba(255,120,40,0.3)", borderRadius:8, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#ffaa66" }}>
-                {last.cellesReials} cel.les reials — possible eixam imminent!
-              </div>
-            )}
-            {last.varroaPct >= 2 && (
-              <div style={{ background:"rgba(255,60,60,0.08)", border:"1px solid rgba(255,60,60,0.25)", borderRadius:8, padding:"10px 14px", marginBottom:12, fontSize:13, color:"#ff9090" }}>
-                Varroa elevada — considera tractament urgent
-              </div>
-            )}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
-              {[
-                ["Forca",    FORCE[last.forcaColonia]],
-                ["Mel",      last.quadresMel + " quadres"],
-                ["Abelles",  last.quadresAbelles + " quadres"],
-                ["Cria",     last.quadresCria + "q · " + last.criaEstat],
-                ["Reina",    REINA[last.estatReina].split(" ").slice(0,3).join(" ")],
-                ["Varroa",   ["0-1%","2%","3%","Mes 3%"][last.varroaPct]],
-                ["Pol.len",  POLLEN[last.pollen]],
-                ["Agress.",  AGRESS[last.agressivitat]],
-              ].map(([lbl, val]) => (
-                <div key={lbl} style={{ ...S.card, padding:12 }}>
-                  <div style={{ color:"#7a6040", fontSize:11 }}>{lbl}</div>
-                  <div style={{ color:"#f5e8a0", fontSize:13, fontWeight:600, marginTop:3 }}>{val}</div>
+          <div style={S.apiariList}>
+            {apiaris.map(ap => (
+              <div key={ap.id} style={{ ...S.apiariItem, ...(selApiari?.id === ap.id ? S.apiariItemActive : {}) }}>
+                <div onClick={() => { setSelApiari(ap); setSelArna(null); }} style={{ flex:1, cursor:\"pointer\" }}>
+                  <div style={{ fontWeight:600, fontSize:15 }}>🏡 {ap.nom}</div>
+                  <div style={{ fontSize:11, color: selApiari?.id === ap.id ? \"#fff\" : \"#8c826e\", marginTop:2 }}>{ap.localitzacio || "Sense ubicació"}</div>
                 </div>
-              ))}
-            </div>
-            {last.notes && (
-              <div style={{ ...S.card, marginBottom:14, fontSize:13, color:"#a09060", fontStyle:"italic" }}>
-                {last.notes}
-              </div>
-            )}
-            <div style={S.card}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                <span style={{ color:"#f5c842", fontWeight:600, fontSize:13 }}>Recomanacions IA</span>
-                <button
-                  onClick={async () => { setRecLoad(true); setRecs(await getRecomanacions(sorted)); setRecLoad(false); }}
-                  disabled={recLoad}
-                  style={S.btnGold}>
-                  {recLoad ? "Analitzant..." : "Analitzar"}
-                </button>
-              </div>
-              {recs
-                ? <p style={{ color:"#b8d8a0", fontSize:13, lineHeight:1.7, margin:0, whiteSpace:"pre-line" }}>{recs}</p>
-                : <p style={{ color:"#5a4a2a", fontSize:12, margin:0 }}>Prem "Analitzar" per obtenir recomanacions.</p>
-              }
-            </div>
-          </div>
-        )}
-
-        {tab === "grafics" && (
-          chartData.length < 2
-            ? <p style={{ color:"#6b5a3a", textAlign:"center", marginTop:40 }}>Calen almenys 2 revisions.</p>
-            : [["forca","Forca colonia","#f5c842"],["mel","Quadres mel","#f5a020"],["abelles","Quadres abelles","#a0c840"],["cria","Quadres cria","#40c8a0"],["varroa","Varroa (0-3)","#ff6666"]].map(([k,lbl,col]) => (
-              <div key={k} style={{ marginBottom:22 }}>
-                <p style={{ color:"#7a6040", fontSize:11, margin:"0 0 6px" }}>{lbl}</p>
-                <ResponsiveContainer width="100%" height={110}>
-                  <LineChart data={chartData} margin={{ top:4, right:8, left:-24, bottom:4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="d" tick={{ fill:"#5a4a2a", fontSize:9 }} />
-                    <YAxis tick={{ fill:"#5a4a2a", fontSize:9 }} />
-                    <Tooltip contentStyle={{ background:"#1a1000", border:"1px solid "+col, borderRadius:6, color:"#fff", fontSize:12 }} />
-                    <Line type="monotone" dataKey={k} stroke={col} strokeWidth={2} dot={{ fill:col, r:3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ))
-        )}
-
-        {tab === "historial" && (
-          <div>
-            {sorted.length === 0 && <p style={{ color:"#6b5a3a", textAlign:"center", marginTop:40 }}>Sense revisions.</p>}
-            {[...sorted].reverse().map(r => (
-              <div key={r.id} style={{ ...S.card, marginBottom:10 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                  <span style={{ color:"#f5c842", fontWeight:600 }}>{r.date}</span>
-                  <span style={{ color:"#a0845c", fontSize:12 }}>{FORCE[r.forcaColonia]}</span>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:4, fontSize:11, color:"#b8a070" }}>
-                  <span>Mel: {r.quadresMel}q</span>
-                  <span>Abelles: {r.quadresAbelles}q</span>
-                  <span>Cria: {r.quadresCria}q</span>
-                  <span>Reina: {REINA[r.estatReina].split(" ")[0]}</span>
-                  <span>Varroa: {["0-1%","2%","3%","3%+"][r.varroaPct]}</span>
-                  <span>Agress: {r.agressivitat}/5</span>
-                </div>
-                {r.notes && <p style={{ color:"#7a6a4a", fontSize:11, margin:"6px 0 0", fontStyle:"italic" }}>{r.notes}</p>}
+                <button onClick={() => setConfirmDel({ type:\"apiari\", id:ap.id, name:ap.nom })} style={S.delIcon}>✕</button>
               </div>
             ))}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
-  const [mode,    setMode]    = useState("login");
-  const [error,   setError]   = useState("");
-  const [loading, setLoading] = useState(false);
-  const emailRef = useRef(); const passRef  = useRef();
-  const nameRef  = useRef(); const pass2Ref = useRef();
-
-  const doLogin = async () => {
-    setError(""); setLoading(true);
-    const email = emailRef.current?.value || "";
-    const pass  = passRef.current?.value  || "";
-    const users = await load("users", true) || [];
-    const u = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === pass);
-    if (u) { try { localStorage.setItem("session_uid", u.id); } catch(_) {} onLogin(u); }
-    else setError("Correu o contrasenya incorrectes");
-    setLoading(false);
-  };
-
-  const doRegister = async () => {
-    setError("");
-    const name  = nameRef.current?.value  || "";
-    const email = emailRef.current?.value || "";
-    const pass  = passRef.current?.value  || "";
-    const pass2 = pass2Ref.current?.value || "";
-    if (!name.trim())         return setError("Cal el nom");
-    if (!email.includes("@")) return setError("Correu no valid");
-    if (pass.length < 6)      return setError("Minim 6 caracters");
-    if (pass !== pass2)       return setError("Les contrasenyes no coincideixen");
-    setLoading(true);
-    const users = await load("users", true) || [];
-    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-      setError("Correu ja registrat"); setLoading(false); return;
-    }
-    const nu = { id:"u_"+Date.now(), email:email.toLowerCase(), password:pass, name:name.trim(), explotacioIds:[] };
-    await save("users", [...users, nu], true);
-    try { localStorage.setItem("session_uid", nu.id); } catch(_) {}
-    onLogin(nu);
-    setLoading(false);
-  };
-
-  const F = ({ lbl, r, type, ph, onEnter }) => (
-    <div style={{ marginBottom:14 }}>
-      <label style={S.label}>{lbl}</label>
-      <input ref={r} type={type || "text"} defaultValue=""
-        onKeyDown={e => e.key === "Enter" && onEnter?.()}
-        style={S.input} placeholder={ph} autoCapitalize="none" />
-    </div>
-  );
-
-  return (
-    <div style={{ ...S.page, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ width:"100%", maxWidth:380, background:"rgba(255,245,180,0.04)", border:"1px solid rgba(255,200,50,0.2)", borderRadius:18, padding:"40px 32px" }}>
-        <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{ fontSize:50 }}>🐝</div>
-          <h1 style={{ color:"#f5c842", fontSize:24, margin:"8px 0 2px" }}>ApiariApp</h1>
-          <p style={{ color:"#7a6040", fontSize:12, margin:0 }}>Gestio d'apiaris intel.ligent</p>
         </div>
-        <div style={{ display:"flex", background:"rgba(0,0,0,0.25)", borderRadius:8, padding:3, marginBottom:24 }}>
-          {[["login","Entrar"],["register","Crear compte"]].map(([m, lbl]) => (
-            <button key={m} onClick={() => { setMode(m); setError(""); }}
-              style={{ flex:1, padding:"8px 0", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"inherit", fontWeight:600, fontSize:12,
-                background: mode===m ? "rgba(245,200,66,0.2)" : "transparent",
-                color:      mode===m ? "#f5c842" : "#6b5a3a" }}>
-              {lbl}
-            </button>
-          ))}
-        </div>
-        {mode === "login" ? (
-          <>
-            <F lbl="Correu"      r={emailRef} ph="tu@correu.cat" />
-            <F lbl="Contrasenya" r={passRef}  type="password" ph="••••••••" onEnter={doLogin} />
-            {error && <p style={{ color:"#ff6b6b", fontSize:13, textAlign:"center", marginBottom:12 }}>{error}</p>}
-            <button onClick={doLogin} disabled={loading} style={{ ...S.btnPri, width:"100%" }}>
-              {loading ? "Entrant..." : "Entrar"}
-            </button>
-          </>
-        ) : (
-          <>
-            <F lbl="Nom complet"         r={nameRef}  ph="Joan Garcia" />
-            <F lbl="Correu"              r={emailRef} ph="tu@correu.cat" />
-            <F lbl="Contrasenya (min 6)" r={passRef}  type="password" ph="••••••••" />
-            <F lbl="Repeteix contrasenya"r={pass2Ref} type="password" ph="••••••••" onEnter={doRegister} />
-            {error && <p style={{ color:"#ff6b6b", fontSize:13, textAlign:"center", marginBottom:12 }}>{error}</p>}
-            <button onClick={doRegister} disabled={loading} style={{ ...S.btnPri, width:"100%" }}>
-              {loading ? "Creant compte..." : "Crear compte"}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
-// ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
-export default function App() {
-  const [user,         setUser]         = useState(null);
-  const [explotacions, setExplotacions] = useState([]);
-  const [apiaris,      setApiaris]      = useState([]);
-  const [arnes,        setArnes]        = useState([]);
-  const [revisions,    setRevisions]    = useState([]);
-  const [selExp,       setSelExp]       = useState(null);
-  const [selApiari,    setSelApiari]    = useState(null);
-  const [selArna,      setSelArna]      = useState(null);
-  const [showBulk,     setShowBulk]     = useState(false);
-
-  // forms state
-  const [showNewExp,    setShowNewExp]    = useState(false);
-  const [showJoinExp,   setShowJoinExp]   = useState(false);
-  const [showNewApiari, setShowNewApiari] = useState(false);
-  const [showNewArna,   setShowNewArna]   = useState(false);
-  const [newExp,        setNewExp]        = useState({ nom:"", rega:"", password:"", password2:"" });
-  const [joinForm,      setJoinForm]      = useState({ rega:"", password:"" });
-  const [newApiari,     setNewApiari]     = useState({ nom:"", lat:"", lng:"", altitud:"", descripcio:"" });
-  const [newArnaNum,    setNewArnaNum]    = useState("");
-  const [confirmDel,    setConfirmDel]    = useState(null); // { type:'apiari'|'arna', id, name }
-  const [formError,     setFormError]     = useState("");
-  const [formMsg,       setFormMsg]       = useState("");
-
-  // Restore session
-  useEffect(() => {
-    (async () => {
-      try {
-        const uid = localStorage.getItem("session_uid");
-        if (!uid) return;
-        const users = await load("users", true) || [];
-        const u = users.find(u => u.id === uid);
-        if (u) setUser(u);
-      } catch(_) {}
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const [e, a, ar, r] = await Promise.all([
-        load("explotacions", true), load("apiaris", true),
-        load("arnes",        true), load("revisions", true)
-      ]);
-      setExplotacions(e||[]); setApiaris(a||[]);
-      setArnes(ar||[]);       setRevisions(r||[]);
-    })();
-  }, [user]);
-
-  const doLogout = () => {
-    try { localStorage.removeItem("session_uid"); } catch(_) {}
-    setUser(null); setSelExp(null); setSelApiari(null); setSelArna(null);
-  };
-
-  // ── CRUD ────────────────────────────────────────────────────────────────────
-  const createExplotacio = async () => {
-    setFormError("");
-    if (!newExp.nom.trim())               return setFormError("Cal el nom");
-    if (!newExp.rega.trim())              return setFormError("Cal el REGA");
-    if (newExp.password.length < 4)       return setFormError("Contrasenya minima 4 caracters");
-    if (newExp.password !== newExp.password2) return setFormError("Les contrasenyes no coincideixen");
-    if (explotacions.find(e => e.rega.toLowerCase() === newExp.rega.toLowerCase()))
-      return setFormError("Aquest REGA ja existeix");
-    const nova = { id:"e_"+Date.now(), nom:newExp.nom.trim(), rega:newExp.rega.trim().toUpperCase(),
-      password:newExp.password, propietariId:user.id, membres:[user.id] };
-    const upd = [...explotacions, nova];
-    setExplotacions(upd); await save("explotacions", upd);
-    const users = await load("users", true) || [];
-    await save("users", users.map(u => u.id===user.id ? {...u, explotacioIds:[...(u.explotacioIds||[]),nova.id]} : u), true);
-    setUser(u => ({ ...u, explotacioIds:[...(u.explotacioIds||[]), nova.id] }));
-    setNewExp({ nom:"", rega:"", password:"", password2:"" });
-    setShowNewExp(false);
-    setFormMsg("Explotacio \""+nova.nom+"\" creada! Comparteix REGA "+nova.rega+" i la contrasenya.");
-  };
-
-  const joinExplotacio = async () => {
-    setFormError("");
-    const exp = explotacions.find(e => e.rega.toUpperCase() === joinForm.rega.trim().toUpperCase());
-    if (!exp)                        return setFormError("No s'ha trobat cap explotacio amb aquest REGA");
-    if (exp.password !== joinForm.password) return setFormError("Contrasenya incorrecta");
-    if (exp.membres?.includes(user.id))    return setFormError("Ja ets membre d'aquesta explotacio");
-    const upd = explotacions.map(e => e.id===exp.id ? {...e, membres:[...(e.membres||[]),user.id]} : e);
-    setExplotacions(upd); await save("explotacions", upd);
-    const users = await load("users", true) || [];
-    await save("users", users.map(u => u.id===user.id ? {...u, explotacioIds:[...(u.explotacioIds||[]),exp.id]} : u), true);
-    setUser(u => ({ ...u, explotacioIds:[...(u.explotacioIds||[]), exp.id] }));
-    setJoinForm({ rega:"", password:"" }); setShowJoinExp(false);
-    setFormMsg("T'has unit a \""+exp.nom+"\" correctament!");
-  };
-
-  const createApiari = async () => {
-    setFormError("");
-    if (!newApiari.nom.trim()) return setFormError("Cal el nom");
-    const nou = { id:"a_"+Date.now(), nom:newApiari.nom.trim(), explotacioId:selExp.id,
-      lat:parseFloat(newApiari.lat)||null, lng:parseFloat(newApiari.lng)||null,
-      altitud:parseInt(newApiari.altitud)||null, descripcio:newApiari.descripcio.trim() };
-    const upd = [...apiaris, nou];
-    setApiaris(upd); await save("apiaris", upd);
-    setNewApiari({ nom:"", lat:"", lng:"", altitud:"", descripcio:"" });
-    setShowNewApiari(false);
-  };
-
-  const deleteApiari = async id => {
-    const arnesIds = arnes.filter(a => a.apiariId === id).map(a => a.id);
-    const newArnes = arnes.filter(a => a.apiariId !== id);
-    const newRevs  = revisions.filter(r => !arnesIds.includes(r.arnaId));
-    const newApi   = apiaris.filter(a => a.id !== id);
-    setApiaris(newApi);   await save("apiaris", newApi);
-    setArnes(newArnes);   await save("arnes", newArnes);
-    setRevisions(newRevs);await save("revisions", newRevs);
-    setConfirmDel(null);
-  };
-
-  const createArna = async num => {
-    if (!num) return null;
-    const nova = { id:"ar_"+Date.now(), numero:+num, apiariId:selApiari.id, activa:true, dataCreacio:new Date().toISOString().split("T")[0] };
-    const upd = [...arnes, nova];
-    setArnes(upd); await save("arnes", upd);
-    return nova;
-  };
-
-  const deleteArna = async id => {
-    const newArnes = arnes.filter(a => a.id !== id);
-    const newRevs  = revisions.filter(r => r.arnaId !== id);
-    setArnes(newArnes);    await save("arnes", newArnes);
-    setRevisions(newRevs); await save("revisions", newRevs);
-    setConfirmDel(null);
-  };
-
-  const addRevision = useCallback(async rev => {
-    const upd = [...revisions, rev];
-    setRevisions(upd); await save("revisions", upd);
-  }, [revisions]);
-
-  const handleBulkComplete = async items => {
-    let newArnesList = [...arnes];
-    let newRevsList  = [...revisions];
-    for (const it of items) {
-      let arnaId = it.arnaId;
-      if (it.mode === "nova" && it.arnaNum) {
-        const nova = { id:"ar_"+Date.now()+"_"+it.arnaNum, numero:it.arnaNum, apiariId:selApiari.id, activa:true, dataCreacio:new Date().toISOString().split("T")[0] };
-        newArnesList = [...newArnesList, nova];
-        arnaId = nova.id;
-      }
-      if (arnaId) {
-        newRevsList = [...newRevsList, { ...it.formData, arnaId, id:"r_"+Date.now()+"_"+Math.random().toString(36).slice(2) }];
-      }
-    }
-    setArnes(newArnesList);    await save("arnes", newArnesList);
-    setRevisions(newRevsList); await save("revisions", newRevsList);
-    setShowBulk(false);
-  };
-
-  // ── RENDER ──────────────────────────────────────────────────────────────────
-  if (!user) return (<LoginScreen onLogin={setUser} />);
-  if (showBulk && selApiari) return (
-    <BulkProcessor
-      apiariArnes={arnes.filter(a => a.apiariId === selApiari.id)}
-      onComplete={handleBulkComplete}
-      onClose={() => setShowBulk(false)}
-    />
-  );
-  if (selArna) return (
-    <ArnaDetail
-      arna={selArna}
-      revisions={revisions.filter(r => r.arnaId === selArna.id)}
-      onAddRevision={addRevision}
-      onBack={() => setSelArna(null)}
-    />
-  );
-
-  const userExps    = explotacions.filter(e => e.membres?.includes(user?.id));
-  const expApiaris  = selExp    ? apiaris.filter(a => a.explotacioId === selExp.id) : [];
-  const apiariArnes = selApiari ? arnes.filter(a => a.apiariId === selApiari.id)    : [];
-
-  const goBack = () => { if (selApiari) setSelApiari(null); else if (selExp) setSelExp(null); };
-
-  const Header = ({ title, sub }) => (
-    <div style={{ padding:"18px 0 14px", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid rgba(255,200,50,0.08)" }}>
-      {(selExp || selApiari) && (
-        <button onClick={goBack} style={{ background:"none", border:"none", color:"#f5c842", cursor:"pointer", fontSize:22, padding:0 }}>←</button>
-      )}
-      <div style={{ flex:1 }}>
-        <h1 style={{ margin:0, color:"#f5c842", fontSize:19 }}>🐝 {title}</h1>
-        {sub && <p style={{ margin:0, color:"#7a6040", fontSize:11 }}>{sub}</p>}
-      </div>
-      <button onClick={doLogout} style={{ padding:"5px 10px", background:"rgba(255,80,40,0.1)", border:"1px solid rgba(255,80,40,0.2)", borderRadius:6, color:"#ff9966", cursor:"pointer", fontSize:11 }}>
-        Sortir
-      </button>
-    </div>
-  );
-
-  // Confirm delete modal
-  const ConfirmDel = () => confirmDel ? (
-    <div style={{ position:"fixed", inset:0, zIndex:2000, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div style={{ ...S.card, maxWidth:320, width:"100%" }}>
-        <h3 style={{ color:"#ff8888", margin:"0 0 8px" }}>Eliminar {confirmDel.type === "apiari" ? "apiari" : "arna"}?</h3>
-        <p style={{ color:"#a09060", fontSize:13, margin:"0 0 16px" }}>
-          "{confirmDel.name}" {confirmDel.type === "apiari" ? "i totes les seves arnes i revisions" : "i totes les seves revisions"} s'eliminaran permanentment.
-        </p>
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={() => confirmDel.type === "apiari" ? deleteApiari(confirmDel.id) : deleteArna(confirmDel.id)}
-            style={{ ...S.btnRed, flex:1, fontWeight:700 }}>Eliminar</button>
-          <button onClick={() => setConfirmDel(null)} style={S.btnGhost}>Cancel.lar</button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  return (
-    <div style={S.page}>
-      <ConfirmDel />
-      <div style={{ maxWidth:700, margin:"0 auto", padding:"0 14px 40px" }}>
-
-        {/* ── EXPLOTACIONS ──────────────────────────────────────────── */}
-        {!selExp && (
-          <div>
-            <Header title="ApiariApp" sub={"Hola, " + user.name} />
-
-            {formMsg && (
-              <div style={{ background:"rgba(80,200,80,0.08)", border:"1px solid rgba(80,200,80,0.2)", borderRadius:8, padding:"10px 14px", margin:"14px 0", fontSize:13, color:"#80c880", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span>{formMsg}</span>
-                <button onClick={() => setFormMsg("")} style={{ background:"none", border:"none", color:"#80c880", cursor:"pointer", fontSize:16 }}>✕</button>
+        {/* COLUMNA CENTRAL: ARNES D'AQUEST APIARI */}
+        {selApiari && !selArna && (
+          <div style={S.contentArea}>
+            <div style={S.sectionHeader}>
+              <div>
+                <h2 style={S.sectionTitle}>Arnes de: <span style={{ color:\"#f5c842\" }}>{selApiari.nom}</span></h2>
+                <p style={S.areaSubtitle}>{arnesFiltrades.length} caixes registrades en aquest assentament</p>
               </div>
-            )}
-
-            <div style={{ display:"flex", gap:8, margin:"16px 0 14px", flexWrap:"wrap" }}>
-              <button onClick={() => { setShowNewExp(!showNewExp); setShowJoinExp(false); setFormError(""); }} style={S.btnGold}>Nova explotacio</button>
-              <button onClick={() => { setShowJoinExp(!showJoinExp); setShowNewExp(false); setFormError(""); }} style={S.btnGold}>Unir-me a una explotacio</button>
+              <div style={{ display:\"flex\", gap:8 }}>
+                <button onClick={() => fileInputRef.current?.click()} style={S.scanBtn}>📷 Escanejar Fitxa</button>
+                <button onClick={() => setShowAddArna(!showAddArna)} style={S.addBtn}>{showAddArna ? "Tancar" : "+ Nova Arna"}</button>
+                <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleFileChange} style={{ display:\"none\" }}/>
+              </div>
             </div>
 
-            {showNewExp && (
-              <div style={{ ...S.card, marginBottom:16 }}>
-                <h3 style={{ color:"#f5c842", margin:"0 0 10px", fontSize:14 }}>Nova explotacio</h3>
-                <p style={{ color:"#7a6040", fontSize:11, margin:"0 0 14px" }}>Comparteix el REGA i la contrasenya als col.laboradors.</p>
-                {[["Nom","nom","text","Can Puig - Osona"],["Numero REGA","rega","text","ES251111000007"],["Contrasenya d'acces","password","password","Minim 4 caracters"],["Repeteix la contrasenya","password2","password","••••••••"]].map(([lbl,k,t,ph]) => (
-                  <div key={k} style={{ marginBottom:12 }}>
-                    <label style={S.label}>{lbl}</label>
-                    <input type={t} value={newExp[k]} onChange={e => setNewExp(p => ({...p,[k]:e.target.value}))} style={S.input} placeholder={ph} />
-                  </div>
-                ))}
-                {formError && <p style={{ color:"#ff6b6b", fontSize:12, margin:"0 0 10px" }}>{formError}</p>}
-                <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={createExplotacio} style={S.btnPri}>Crear</button>
-                  <button onClick={() => { setShowNewExp(false); setFormError(""); }} style={S.btnGhost}>Cancel.lar</button>
-                </div>
+            {scanLog && <div style={S.logBanner}>{scanLog}</div>}
+
+            {showAddArna && (
+              <div style={{ ...S.miniForm, maxWidth:300, marginBottom:16 }}>
+                <input type="number" value={newArnaNum} onChange={e => setNewArnaNum(e.target.value)} placeholder="Número de la caixa..." style={S.input}/>
+                <button onClick={handleAddArna} style={S.submitBtn}>Afegeix Caixa</button>
               </div>
             )}
 
-            {showJoinExp && (
-              <div style={{ ...S.card, marginBottom:16 }}>
-                <h3 style={{ color:"#f5c842", margin:"0 0 10px", fontSize:14 }}>Unir-me a una explotacio</h3>
-                {[["Numero REGA","rega","text","ES251111000007"],["Contrasenya","password","password","••••••••"]].map(([lbl,k,t,ph]) => (
-                  <div key={k} style={{ marginBottom:12 }}>
-                    <label style={S.label}>{lbl}</label>
-                    <input type={t} value={joinForm[k]} onChange={e => setJoinForm(p => ({...p,[k]:e.target.value}))} style={S.input} placeholder={ph} />
-                  </div>
-                ))}
-                {formError && <p style={{ color:"#ff6b6b", fontSize:12, margin:"0 0 10px" }}>{formError}</p>}
-                <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={joinExplotacio} style={S.btnPri}>Unir-me</button>
-                  <button onClick={() => { setShowJoinExp(false); setFormError(""); }} style={S.btnGhost}>Cancel.lar</button>
-                </div>
-              </div>
-            )}
-
-            {userExps.length === 0 && !showNewExp && !showJoinExp && (
-              <div style={{ textAlign:"center", padding:"50px 20px" }}>
-                <div style={{ fontSize:52, marginBottom:12 }}>🏡</div>
-                <p style={{ fontSize:14, color:"#7a6040" }}>Encara no tens cap explotacio.</p>
-              </div>
-            )}
-
-            {userExps.map(exp => {
-              const nA  = apiaris.filter(a => a.explotacioId === exp.id).length;
-              const nAr = arnes.filter(ar => apiaris.filter(a => a.explotacioId===exp.id).map(a=>a.id).includes(ar.apiariId)).length;
-              return (
-                <div key={exp.id} onClick={() => setSelExp(exp)}
-                  style={{ ...S.card, marginBottom:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                  <div>
-                    <div style={{ color:"#f5e8a0", fontWeight:600, fontSize:15 }}>🏡 {exp.nom}</div>
-                    <div style={{ color:"#7a6040", fontSize:11, marginTop:2 }}>REGA: {exp.rega}</div>
-                    {exp.propietariId === user.id && (
-                      <div style={{ color:"#f5c842", fontSize:10, marginTop:2 }}>Propietari · {exp.membres?.length||1} membre(s)</div>
-                    )}
-                  </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ color:"#f5c842", fontSize:14, fontWeight:600 }}>{nA} apiaris</div>
-                    <div style={{ color:"#7a6040", fontSize:11 }}>{nAr} arnes</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── APIARIS ───────────────────────────────────────────────── */}
-        {selExp && !selApiari && (
-          <div>
-            <Header title={selExp.nom} sub={"REGA: " + selExp.rega + " · " + expApiaris.length + " apiaris"} />
-
-            <div style={{ display:"flex", justifyContent:"flex-end", margin:"14px 0" }}>
-              <button onClick={() => { setShowNewApiari(!showNewApiari); setFormError(""); }} style={S.btnGold}>+ Nou apiari</button>
-            </div>
-
-            {showNewApiari && (
-              <div style={{ ...S.card, marginBottom:16 }}>
-                <h3 style={{ color:"#f5c842", margin:"0 0 14px", fontSize:14 }}>Nou apiari</h3>
-                {[["Nom *","nom","text","Apiari Nord"],["Altitud (m)","altitud","number","620"],["Descripcio","descripcio","text","Vora el bosc"]].map(([lbl,k,t,ph]) => (
-                  <div key={k} style={{ marginBottom:12 }}>
-                    <label style={S.label}>{lbl}</label>
-                    <input type={t} value={newApiari[k]} onChange={e => setNewApiari(p => ({...p,[k]:e.target.value}))} style={S.input} placeholder={ph} />
-                  </div>
-                ))}
-                <div style={{ marginBottom:12 }}>
-                  <label style={{ ...S.label, marginBottom:8 }}>Ubicacio (opcional)</label>
-                  <LocationPicker lat={newApiari.lat} lng={newApiari.lng} onChange={(la,lo) => setNewApiari(p => ({...p,lat:la,lng:lo}))} />
-                </div>
-                {formError && <p style={{ color:"#ff6b6b", fontSize:12, margin:"10px 0 0" }}>{formError}</p>}
-                <div style={{ display:"flex", gap:8, marginTop:14 }}>
-                  <button onClick={createApiari} style={S.btnPri}>Crear apiari</button>
-                  <button onClick={() => { setShowNewApiari(false); setFormError(""); }} style={S.btnGhost}>Cancel.lar</button>
-                </div>
-              </div>
-            )}
-
-            {expApiaris.length === 0 && !showNewApiari && (
-              <div style={{ textAlign:"center", padding:"50px 20px" }}>
-                <div style={{ fontSize:52, marginBottom:12 }}>🌿</div>
-                <p style={{ fontSize:14, color:"#7a6040" }}>Cap apiari. Afegeix el primer!</p>
-              </div>
-            )}
-
-            {expApiaris.map(ap => {
-              const nAr = arnes.filter(a => a.apiariId === ap.id).length;
-              const lastRev = revisions
-                .filter(r => arnes.filter(a => a.apiariId===ap.id).map(a=>a.id).includes(r.arnaId))
-                .sort((a,b) => b.date.localeCompare(a.date))[0];
-              return (
-                <div key={ap.id} style={{ ...S.card, marginBottom:16 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", cursor:"pointer" }}
-                    onClick={() => setSelApiari(ap)}>
-                    <div>
-                      <div style={{ color:"#f5e8a0", fontWeight:600, fontSize:15 }}>🌿 {ap.nom}</div>
-                      {ap.descripcio && <div style={{ color:"#7a6040", fontSize:12, marginTop:2 }}>{ap.descripcio}</div>}
-                      {ap.lat && <div style={{ color:"#557755", fontSize:11, marginTop:2 }}>📍 {ap.lat}, {ap.lng}{ap.altitud ? " · "+ap.altitud+"m" : ""}</div>}
-                    </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ color:"#f5c842", fontSize:14, fontWeight:600 }}>{nAr} arnes</div>
-                      {lastRev && <div style={{ color:"#7a6040", fontSize:10 }}>Ultima: {lastRev.date}</div>}
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8 }}>
-                    <button onClick={() => setConfirmDel({ type:"apiari", id:ap.id, name:ap.nom })} style={S.btnRed}>
-                      Eliminar apiari
-                    </button>
-                  </div>
-                  {ap.lat && ap.lng && (
-                    <div onClick={e => e.stopPropagation()}>
-                      <LeafletMap lat={ap.lat} lng={ap.lng} height={180} />
-                      <MeteoWidget lat={ap.lat} lng={ap.lng} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── ARNES ─────────────────────────────────────────────────── */}
-        {selApiari && (
-          <div>
-            <Header title={selApiari.nom} sub={apiariArnes.length + " arnes · " + selExp.nom} />
-
-            <div style={{ display:"flex", gap:8, margin:"14px 0", flexWrap:"wrap", alignItems:"center" }}>
-              {showNewArna ? (
-                <>
-                  <input type="number" value={newArnaNum}
-                    onChange={e => setNewArnaNum(e.target.value)}
-                    placeholder="Numero d'arna (ex: 15)"
-                    style={{ ...S.input, flex:1, minWidth:0 }}
-                    onKeyDown={e => { if (e.key==="Enter") { createArna(newArnaNum); setNewArnaNum(""); setShowNewArna(false); } }}
-                    autoFocus />
-                  <button onClick={() => { createArna(newArnaNum); setNewArnaNum(""); setShowNewArna(false); }} style={S.btnPri}>Crear</button>
-                  <button onClick={() => setShowNewArna(false)} style={S.btnGhost}>✕</button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setShowNewArna(true)} style={S.btnGold}>+ Nova arna</button>
-                  <button onClick={() => setShowBulk(true)}    style={S.btnBlue}>📷 Analitzar fitxes</button>
-                </>
-              )}
-            </div>
-
-            {apiariArnes.length === 0 && !showNewArna && (
-              <div style={{ textAlign:"center", padding:"50px 20px" }}>
-                <div style={{ fontSize:52, marginBottom:12 }}>🐝</div>
-                <p style={{ fontSize:14, color:"#7a6040" }}>Cap arna. Afegeix la primera!</p>
-              </div>
-            )}
-
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))", gap:10 }}>
-              {apiariArnes.sort((a,b) => a.numero - b.numero).map(ar => {
-                const revs = revisions.filter(r => r.arnaId === ar.id).sort((a,b) => b.date.localeCompare(a.date));
+            <div style={S.arnesGrid}>
+              {arnesFiltrades.map(ar => {
+                const revs = revisions.filter(r => r.arna_id === ar.id);
                 const last = revs[0];
-                const alerta = last && (last.cellesReials > 0 || last.varroaPct >= 2);
+                const alerta = last && (last.varroaPct > 1 || last.cellesReials > 3 || last.forcaColonia < 1);
                 return (
-                  <div key={ar.id} style={{ ...S.card, textAlign:"center", position:"relative",
-                    border: alerta ? "1px solid rgba(255,140,40,0.5)" : S.card.border }}>
-                    {alerta && <div style={{ position:"absolute", top:6, right:8, fontSize:13 }}>⚠️</div>}
-                    <div onClick={() => setSelArna(ar)} style={{ cursor:"pointer", paddingBottom:6 }}>
+                  <div key={ar.id} style={{ ...S.card, textAlign:\"center\", position:\"relative\", border: alerta ? \"1px solid rgba(255,140,40,0.5)\" : S.card.border }}>
+                    {alerta && <div style={{ position:\"absolute\", top:6, right:8, fontSize:13 }}>⚠️</div>}
+                    <div onClick={() => setSelArna(ar)} style={{ cursor:\"pointer\", paddingBottom:6 }}>
                       <div style={{ fontSize:26, marginBottom:4 }}>🐝</div>
-                      <div style={{ color:"#f5c842", fontWeight:700, fontSize:17 }}>#{ar.numero}</div>
+                      <div style={{ color:\"#f5c842\", fontWeight:700, fontSize:17 }}>#{ar.numero}</div>
                       {last ? (
                         <>
-                          <div style={{ color:"#a0845c", fontSize:10, marginTop:3 }}>{FORCE[last.forcaColonia]}</div>
-                          <div style={{ color:"#5a4a2a", fontSize:9 }}>{last.date}</div>
+                          <div style={{ color:\"#a0845c\", fontSize:10, marginTop:3 }}>{FORCE[last.forcaColonia]}</div>
+                          <div style={{ color:\"#5a4a2a\", fontSize:9 }}>{last.date}</div>
                         </>
                       ) : (
-                        <div style={{ color:"#5a4a2a", fontSize:10, marginTop:4 }}>Sense revisio</div>
+                        <div style={{ color:\"#5a4a2a\", fontSize:10, marginTop:4 }}>Sense revisió</div>
                       )}
                     </div>
-                    <button onClick={() => setConfirmDel({ type:"arna", id:ar.id, name:"Arna #"+ar.numero })}
-                      style={{ background:"none", border:"none", color:"#6b3a3a", cursor:"pointer", fontSize:11, padding:"2px 0" }}>
+                    <button onClick={() => setConfirmDel({ type:\"arna\", id:ar.id, name:\"Arna #\"+ar.numero })} style={{ background:\"none\", border:\"none\", color:\"#6b3a3a\", cursor:\"pointer\", fontSize:11, padding:\"2px 0\" }}>
                       Eliminar
                     </button>
                   </div>
@@ -1368,7 +375,236 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* DETALL DE L'ARNA SELECCIONADA */}
+        {selArna && (
+          <div style={S.contentArea}>
+            <div style={S.backNav} onClick={() => setSelArna(null)}>← Tornar a l'assentament {selApiari?.nom}</div>
+            
+            <div style={S.sectionHeader}>
+              <div>
+                <h2 style={{ ...S.sectionTitle, fontSize:26 }}>Arna <span style={{ color:\"#f5c842\" }}>#{selArna.numero}</span></h2>
+                <p style={S.areaSubtitle}>Historial de tractaments, producció de mel i evolució</p>
+              </div>
+              <button onClick={() => setEditRev({})} style={S.scanBtn}>+ Nova Inspecció Manual</button>
+            </div>
+
+            {/* GRÀFIC D'EVOLUCIÓ */}
+            {revsDeLArna.length > 0 && (
+              <div style={S.chartContainer}>
+                <h4 style={{ margin:\"0 0 10px 0\", color:\"#f5c842\", fontSize:13 }}>Evolució de Quadres de Cria i Abelles</h4>
+                <ResponsiveContainer width="100%" height={160}>
+                  <LineChart data={[...revsDeLArna].reverse()}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2419" />
+                    <XAxis dataKey="date" stroke="#8c826e" style={{ fontSize:10 }} />
+                    <YAxis stroke="#8c826e" style={{ fontSize:10 }} />
+                    <Tooltip contentStyle={{ background:\"#1e1911\", border:\"1px solid #3c3222\" }} />
+                    <Line type="monotone" dataKey="quadresCria" name="Cria" stroke="#f5c842" strokeWidth={2} />
+                    <Line type="monotone" dataKey="quadresAbelles" name="Abelles" stroke="#a69b85" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* LLISTAT DE REVISIONS */}
+            <div style={{ display:\"flex\", flexDirection:\"column\", gap:12, marginTop:16 }}>
+              {revsDeLArna.map(rv => (
+                <div key={rv.id} style={S.revRow}>
+                  <div style={S.revRowHeader}>
+                    <div style={{ fontWeight:700, color:\"#f5c842\" }}>📅 {rv.date}</div>
+                    <div style={{ display:\"flex\", gap:8 }}>
+                      <button onClick={() => setEditRev(rv)} style={S.rowEditBtn}>Editar</button>
+                      <button onClick={() => setConfirmDel({ type:\"revisio\", id:rv.id, name:\"Inspecció de \"+rv.date })} style={S.rowDelBtn}>✕</button>
+                    </div>
+                  </div>
+                  <div style={S.revGridData}>
+                    <div><strong>Força:</strong> {FORCE[rv.forcaColonia]}</div>
+                    <div><strong>Mel:</strong> {rv.quadresMel} quadres</div>
+                    <div><strong>Cria:</strong> {rv.quadresCria} ({rv.criaEstat})</div>
+                    <div><strong>Abelles:</strong> {rv.quadresAbelles} quadres</div>
+                    <div><strong>Reina:</strong> {REINA[rv.estatReina]} (Any {REICOLOR[rv.anyReina] || rv.anyReina})</div>
+                    <div><strong>Varroa:</strong> Pct {rv.varroaPct}%</div>
+                    <div><strong>Tractament:</strong> {TRACTA[rv.tipusTractament]}</div>
+                    <div><strong>Agressivitat:</strong> {AGRESS[rv.agressivitat]}</div>
+                  </div>
+                  {rv.observacions && <div style={S.obsText}>📝 {rv.observacions}</div>}
+                </div>
+              ))}
+              {revsDeLArna.length === 0 && <div style={{ color:\"#a69b85\", fontStyle:\"italic\" }}>No s'ha fet cap inspecció encara en aquesta caixa.</div>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* DIÀLOG DE CONFIRMACIÓ DE BORRAT */}
+      {confirmDel && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <h3>Estàs segur d'eliminar?</h3>
+            <p style={{ color:\"#a69b85\", margin:\"8px 0 20px 0\" }}>S'eliminarà permanentment: <strong>{confirmDel.name}</strong></p>
+            <div style={{ display:\"flex\", justifyContent:\"flex-end\", gap:10 }}>
+              <button onClick={() => setConfirmDel(null)} style={S.cancelBtn}>Cancel·lar</button>
+              <button onClick={executeDelete} style={S.confirmDelBtn}>Eliminar del tot</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FORMULARI REVISIÓ (MANUAL O EDICIÓ) */}
+      {editRev && (
+        <RevisionModal rev={editRev} onClose={() => setEditRev(null)} onSave={handleSaveRevision} />
+      )}
+    </div>
+  );
+}
+
+// ─── SUBCOMPONENT: MODAL DE REVISIÓ ──────────────────────────────────────────
+function RevisionModal({ rev, onClose, onSave }) {
+  const [f, setF] = useState({
+    date: rev.date || new Date().toISOString().split("T")[0],
+    forcaColonia: rev.forcaColonia ?? 2,
+    quadresMel: rev.quadresMel ?? 0,
+    pollen: rev.pollen ?? 0,
+    quadresAbelles: rev.quadresAbelles ?? 0,
+    quadresCria: rev.quadresCria ?? 0,
+    criaEstat: rev.criaEstat || "Compacta",
+    estatReina: rev.estatReina ?? 3,
+    cellesReials: rev.cellesReials ?? 0,
+    anyReina: rev.anyReina ?? 0,
+    varroaPct: rev.varroaPct ?? 0,
+    tipusTractament: rev.tipusTractament ?? 0,
+    quadresBuits: rev.quadresBuits ?? 0,
+    agressivitat: rev.agressivitat ?? 0,
+    observacions: rev.observacions || ""
+  });
+
+  return (
+    <div style={S.overlay}>
+      <div style={{ ...S.modal, maxWidth:500, width:\"90%\", maxHeight:\"90vh\", overflowY:\"auto\" }}>
+        <h3 style={{ marginBottom:16, color:\"#f5c842\" }}>{rev.id ? "Modificar Inspecció" : "Nova Inspecció Manual"}</h3>
+        
+        <div style={{ display:\"flex\", flexDirection:\"column\", gap:12 }}>
+          <label style={S.label}>Data de la visita:
+            <input type="date" value={f.date} onChange={e=>setF({...f, date:e.target.value})} style={S.input}/>
+          </label>
+
+          <div style={{ display:\"flex\", gap:10 }}>
+            <label style={{ ...S.label, flex:1 }}>Força:
+              <select value={f.forcaColonia} onChange={e=>setF({...f, forcaColonia:parseInt(e.target.value)})} style={S.input}>
+                {FORCE.map((x,i)=><option key={i} value={i}>{x}</option>)}
+              </select>
+            </label>
+            <label style={{ ...S.label, flex:1 }}>Agressivitat:
+              <select value={f.agressivitat} onChange={e=>setF({...f, agressivitat:parseInt(e.target.value)})} style={S.input}>
+                {AGRESS.map((x,i)=><option key={i} value={i}>{x}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display:\"flex\", gap:10 }}>
+            <label style={{ ...S.label, flex:1 }}>Quadres Mel:
+              <input type="number" value={f.quadresMel} onChange={e=>setF({...f, quadresMel:parseInt(e.target.value)||0})} style={S.input}/>
+            </label>
+            <label style={{ ...S.label, flex:1 }}>Quadres Abelles:
+              <input type="number" value={f.quadresAbelles} onChange={e=>setF({...f, quadresAbelles:parseInt(e.target.value)||0})} style={S.input}/>
+            </label>
+          </div>
+
+          <div style={{ display:\"flex\", gap:10 }}>
+            <label style={{ ...S.label, flex:1 }}>Quadres Cria:
+              <input type="number" value={f.quadresCria} onChange={e=>setF({...f, quadresCria:parseInt(e.target.value)||0})} style={S.input}/>
+            </label>
+            <label style={{ ...S.label, flex:1 }}>Estat de la Cria:
+              <select value={f.criaEstat} onChange={e=>setF({...f, criaEstat:e.target.value})} style={S.input}>
+                <option value="Compacta">Compacta</option>
+                <option value="Pua">En Pua</option>
+                <option value="Dispersa">Dispersa</option>
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display:\"flex\", gap:10 }}>
+            <label style={{ ...S.label, flex:1 }}>Reina:
+              <select value={f.estatReina} onChange={e=>setF({...f, estatReina:parseInt(e.target.value)})} style={S.input}>
+                {REINA.map((x,i)=><option key={i} value={i}>{x}</option>)}
+              </select>
+            </label>
+            <label style={{ ...S.label, flex:1 }}>Any / Color Reina:
+              <select value={f.anyReina} onChange={e=>setF({...f, anyReina:parseInt(e.target.value)})} style={S.input}>
+                {REICOLOR.map((x,i)=><option key={i} value={i}>{x}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display:\"flex\", gap:10 }}>
+            <label style={{ ...S.label, flex:1 }}>Varroa:
+              <select value={f.varroaPct} onChange={e=>setF({...f, varroaPct:parseInt(e.target.value)})} style={S.input}>
+                <option value={0}>0-1% (Sana)</option>
+                <option value={1}>2% (Control)</option>
+                <option value={2}>3% (Alerta)</option>
+                <option value={3}}>&gt;3% (Perillós)</option>
+              </select>
+            </label>
+            <label style={{ ...S.label, flex:1 }}>Tractament:
+              <select value={f.tipusTractament} onChange={e=>setF({...f, tipusTractament:parseInt(e.target.value)})} style={S.input}>
+                {TRACTA.map((x,i)=><option key={i} value={i}>{x}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label style={S.label}>Observacions generals:
+            <textarea value={f.observacions} onChange={e=>setF({...f, observacions:e.target.value})} placeholder="Notes de salut, alimentació..." style={{ ...S.input, height:60, resize:\"none\" }}/>
+          </label>
+        </div>
+
+        <div style={{ display:\"flex\", justifyContent:\"flex-end\", gap:10, marginTop:20 }}>
+          <button onClick={onClose} style={S.cancelBtn}>Tancar</button>
+          <button onClick={() => onSave(f)} style={S.submitBtn}>Guardar Inspecció</button>
+        </div>
       </div>
     </div>
   );
 }
+
+// ─── ESTILS EN JAVASCRIPT (THEME OBSIDIAN/APICULTURA) ───────────────────────
+const S = {
+  app: { backgroundColor: "#120f0a", color: "#e6decb", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif" },
+  loading: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", backgroundColor: "#120f0a", color: "#f5c842", fontSize: 20, fontWeight: 600 },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid #2a2419", backgroundColor: "#1a150e" },
+  headerLeft: { display: "flex", alignItems: "center", gap: 14 },
+  title: { fontSize: 22, fontWeight: 800, color: "#f5c842", margin: 0 },
+  subtitle: { fontSize: 12, color: "#a69b85", margin: "2px 0 0 0" },
+  meteoWidget: { display: "flex", alignItems: "center", gap: 10, backgroundColor: "#231c12", padding: "6px 12px", borderRadius: 8, border: "1px solid #3c3222" },
+  floraBanner: { backgroundColor: "#2d2415", padding: "10px 24px", fontSize: 13, borderBottom: "1px solid #3d311d", color: "#e6decb" },
+  mainLayout: { display: "flex", minHeight: "calc(100vh - 130px)" },
+  sidebar: { width: 280, borderRight: "1px solid #2a2419", backgroundColor: "#16120c", padding: 16, display: "flex", flexDirection: "column", gap: 16 },
+  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: 700, color: "#e6decb", margin: 0 },
+  areaSubtitle: { fontSize: 12, color: "#8c826e", margin: "2px 0 0 0" },
+  addBtn: { background: "#f5c842", border: "none", color: "#120f0a", padding: "4px 10px", borderRadius: 4, fontWeight: 600, fontSize: 12, cursor: "pointer" },
+  scanBtn: { background: "#4a8557", border: "none", color: "#fff", padding: "6px 12px", borderRadius: 4, fontWeight: 600, fontSize: 13, cursor: "pointer" },
+  miniForm: { backgroundColor: "#231c12", padding: 12, borderRadius: 6, border: "1px solid #3c3222", display: "flex", flexDirection: "column", gap: 8 },
+  input: { backgroundColor: "#120f0a", border: "1px solid #3c3222", color: "#e6decb", padding: "6px 8px", borderRadius: 4, fontSize: 13, width: "100%", boxSizing: "border-box" },
+  submitBtn: { background: "#f5c842", border: "none", color: "#120f0a", padding: "6px", borderRadius: 4, fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 4 },
+  apiariList: { display: "flex", flexDirection: "column", gap: 8 },
+  apiariItem: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 6, border: "1px solid #2a2419", backgroundColor: "#1d1710" },
+  apiariItemActive: { backgroundColor: "#f5c842", borderColor: "#f5c842", color: "#120f0a" },
+  delIcon: { background: "none", border: "none", color: "#6b3a3a", cursor: "pointer", fontSize: 12 },
+  contentArea: { flex: 1, padding: 24, backgroundColor: "#120f0a" },
+  logBanner: { backgroundColor: "#1e291e", border: "1px solid #2e4d32", color: "#8cd999", padding: 12, borderRadius: 6, fontSize: 13, marginBottom: 16 },
+  arnesGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 16, marginTop: 16 },
+  card: { backgroundColor: "#1a150e", border: "1px solid #2a2419", borderRadius: 8, padding: 12, transition: "transform 0.15s" },
+  backNav: { color: "#f5c842", fontSize: 13, cursor: "pointer", marginBottom: 16, fontWeight: 600 },
+  chartContainer: { backgroundColor: "#1a150e", padding: 14, borderRadius: 8, border: "1px solid #2a2419", marginBottom: 20 },
+  revRow: { backgroundColor: "#1a150e", border: "1px solid #2a2419", borderRadius: 8, padding: 14 },
+  revRowHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #2a2419", paddingBottom: 6, marginBottom: 10 },
+  rowEditBtn: { background: "none", border: "none", color: "#a69b85", cursor: "pointer", fontSize: 12 },
+  rowDelBtn: { background: "none", border: "none", color: "#6b3a3a", cursor: "pointer", fontSize: 13 },
+  revGridData: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, fontSize: 13, color: "#cbd3c1" },
+  obsText: { marginTop: 10, padding: "6px 10px", backgroundColor: "#231c12", borderRadius: 4, fontSize: 12, color: "#a69b85", fontStyle: "italic" },
+  overlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.75)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 100 },
+  modal: { backgroundColor: "#1a150e", border: "1px solid #3c3222", borderRadius: 8, padding: 20, maxWidth: 400, width: "100%" },
+  cancelBtn: { background: "none", border: "1px solid #3c3222", color: "#a69b85", padding: "6px 12px", borderRadius: 4, fontSize: 13, cursor: "pointer" },
+  confirmDelBtn: { background: "#6b3a3a", border: "none", color: "#fff", padding: "6px 12px", borderRadius: 4, fontSize: 13, cursor: "pointer", fontWeight: 600 },
+  label: { display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "#a69b85", width: "100%" }
+};
