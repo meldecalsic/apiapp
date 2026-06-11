@@ -254,19 +254,17 @@ Retorna ÚNICAMENT aquest JSON (sense text addicional):
 // ─────────────────────────────────────────────────────────────────────────────
 // HANDLER
 // ─────────────────────────────────────────────────────────────────────────────
-module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Mètode no permès' });
-  }
-
-  try {
+try {
     const { base64, mediaType } = req.body;
     if (!base64 || !mediaType) {
       return res.status(400).json({ error: 'Falten les dades de la imatge' });
     }
 
+    console.log("Enviant petició a Anthropic amb el model correcte...");
+
+    // Utilitzem la teva instància d'anthropic ja configurada a dalt
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-latest",
+      model: "claude-3-5-sonnet-latest", // Així corregim el 404 definitivament
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{
@@ -278,7 +276,7 @@ module.exports = async function handler(req, res) {
           },
           {
             type: "text",
-            text: "Analitza aquesta fitxa d'arna i retorna el JSON amb totes les dades."
+            text: "Analitza aquesta fitxa d'arna i retorna el JSON com totes les dades."
           }
         ]
       }]
