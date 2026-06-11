@@ -298,6 +298,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("Error al servidor Vercel:", error);
-    return res.status(500).json({ error: 'Error intern al servidor' });
+    console.error("Error message:", error.message);
+    console.error("Error status:", error.status);
+    return res.status(500).json({ 
+      error: 'Error intern al servidor',
+      detall: error.message
+    });
   }
 }
