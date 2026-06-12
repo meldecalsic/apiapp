@@ -285,7 +285,7 @@ function FotoViewer({ url, onClose }) {
           </button>
         )}
         <button onClick={onClose}
-          style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:"50%", color:"#fff", width:36, height:36, fontSize:18, cursor:"pointer" }}>\u2715</button>
+          style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:"50%", color:"#fff", width:36, height:36, fontSize:18, cursor:"pointer" }}>✕</button>
       </div>
       <div style={{ position:"absolute", top:12, left:12, color:"rgba(255,255,255,0.5)", fontSize:11, zIndex:10000 }}>
         {scale > 1.05 ? Math.round(scale*100)+"%" : "Pessiga per ampliar"}
