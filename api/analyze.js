@@ -214,25 +214,31 @@ const FITXA_COORDENADES = {
 // ─────────────────────────────────────────────────────────────────────────────
 // SYSTEM PROMPT
 // ─────────────────────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `Ets un sistema d'anàlisi visual especialitzat en fitxes d'apicultura.
+const SYSTEM_PROMPT = `Ets un sistema d'anàlisi visual especialitzat en fitxes d'apicultura amb xinxetes.
 
-La fitxa té coordenades normalitzades (0.0–1.0) per cada fila i valor. Te les proporciono a continuació.
+DESCRIPCIÓ DE LA FITXA:
+- És una planxa de plàstic blanc o groguenc, format A4 apaïsat, fixada a una arna de fusta.
+- Té files horitzontals, una per cada paràmetre. Cada fila té una etiqueta a l'esquerra i caselles numerades o etiquetades cap a la dreta.
+- Les XINXETES són boletes de colors (vermell, groc, blau, verd, blanc, negre, taronja) clavades al plàstic. Cada xinxeta marca UN valor per fila.
+- Si una fila NO té cap xinxeta, el valor és null.
+- El número d'arna sol estar escrit a mà amb retolador a la part superior esquerra.
 
-TASCA:
-1. Llegeix el NÚMERO D'ARNA — és l'únic text que has de reconèixer. Es troba a dalt a l'esquerra al costat de "Arna numero". Pot ser un número escrit a mà o imprès.
-2. Per a la resta de camps: localitza cada xinxeta per la seva posició visual (y = quina fila, x = quin valor dins la fila). NO llegeixis el text de la fitxa — usa les coordenades del JSON.
-3. Tolerància: ±0.03 en x per files numèriques denses (dies 1–31), ±0.06 per files categòriques.
-4. Si no veus cap xinxeta en una fila, posa null.
-5. Si la foto és borrosa en alguna zona, posa null per aquells camps i inclou-los a "incertesa".
+INSTRUCCIONS:
+1. Identifica el NÚMERO D'ARNA — escrit a mà o imprès a dalt a l'esquerra.
+2. Per cada fila, busca si hi ha una xinxeta. Si no n'hi ha, posa null.
+3. Usa les coordenades normalitzades del JSON per determinar quin valor correspon a la posició X de la xinxeta.
+4. Tolerància posició: ±0.04 per files numèriques denses, ±0.07 per files categòriques.
+5. Si la foto és borrosa o la xinxeta és ambigua, posa null i afegeix el camp a "incertesa".
+6. Les xinxetes poden ser de qualsevol color — el color NO determina el valor, només la POSICIÓ.
 
 MAPA DE COORDENADES:
 ${JSON.stringify(FITXA_COORDENADES, null, 2)}
 
-Retorna ÚNICAMENT aquest JSON (sense text addicional):
+Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
 {
   "arna_numero": <enter o null>,
   "ultima_revisio_dia": <1-31 o null>,
-  "mes": <"Gener"/"Febrer"/"Març"/"Abril"/"Maig"/"Juny"/"Juliol"/"Agost"/"Setembre"/"Octubre"/"Novembre"/"Desembre" o null>,
+  "mes": <nom del mes en català o null>,
   "forca_colonia": <"Molt feble"/"Feble"/"Normal"/"Forta"/"Molt forta" o null>,
   "quadres_mel": <1-10, "Més de 10", o null>,
   "pollen": <"Gens"/"Poc"/"Una mica"/"Pse"/"Bastant"/"Moltíssim" o null>,
@@ -241,16 +247,15 @@ Retorna ÚNICAMENT aquest JSON (sense text addicional):
   "estat_reina": <"Vista amb posta recent"/"No vista / Posta recent"/"Vista sense posta"/"Ni vista ni posta" o null>,
   "cel_les_reals": <1-24, "Més al mig dels quadres", "Als extrems dels quadres", "A un sol quadre", o null>,
   "any_reina": <"0 Blau"/"1 Blanc"/"2 Groc"/"3 Vermell"/"4 Verd"/"5 Blau"/"6 Blanc"/"7 Groc"/"8 Vermell"/"9 Verd" o null>,
-  "varroa_mes_prova": <mes o null>,
+  "varroa_mes_prova": <nom del mes en català o null>,
   "varroa_dia_prova": <1-31 o null>,
   "varroa_percentatge": <"0 a 1%"/"2%"/"3%"/"Més de 3%" o null>,
-  "tractament_mes": <mes o null>,
+  "tractament_mes": <nom del mes en català o null>,
   "tipus_tractament": <"Varromed"/"Oxàlic sublimat"/"Apivar"/"Apitraz"/"Altres"/"Més nucli sanitari" o null>,
   "quadres_buits": <1-14 o null>,
   "agressivitat": <"Calma total"/"La típica pesada i prou"/"Les guardianes"/"M'agobien"/"M'agobien molt"/"Uff marxo d'aquí" o null>,
   "incertesa": []
 }`;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // HANDLER
 // ─────────────────────────────────────────────────────────────────────────────
