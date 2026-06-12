@@ -236,16 +236,68 @@ function MeteoWidget({ lat, lng }) {
 
 // ─── FORMULARI REVISIO ────────────────────────────────────────────────────────
 function FotoViewer({ url, onClose }) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x:0, y:0 });
+  const lastDist = useRef(null);
+  const lastPos = useRef(null);
+
+  const getDist = (t) => {
+    const dx = t[0].clientX - t[1].clientX;
+    const dy = t[0].clientY - t[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  };
+
+  const onTouchStart = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2) lastDist.current = getDist(e.touches);
+    else if (e.touches.length === 1) lastPos.current = { x:e.touches[0].clientX, y:e.touches[0].clientY };
+  };
+
+  const onTouchMove = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2 && lastDist.current) {
+      const d = getDist(e.touches);
+      setScale(s => Math.min(Math.max(s * (d / lastDist.current), 1), 8));
+      lastDist.current = d;
+    } else if (e.touches.length === 1 && lastPos.current) {
+      const dx = e.touches[0].clientX - lastPos.current.x;
+      const dy = e.touches[0].clientY - lastPos.current.y;
+      setOffset(o => ({ x:o.x+dx, y:o.y+dy }));
+      lastPos.current = { x:e.touches[0].clientX, y:e.touches[0].clientY };
+    }
+  };
+
+  const onTouchEnd = (e) => {
+    if (e.touches.length < 2) lastDist.current = null;
+    if (e.touches.length === 0) lastPos.current = null;
+  };
+
+  const reset = () => { setScale(1); setOffset({ x:0, y:0 }); };
+
   return (
-    <div onClick={onClose}
-      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:9999,
-        display:"flex", alignItems:"center", justifyContent:"center", touchAction:"pinch-zoom" }}>
-      <button onClick={onClose}
-        style={{ position:"absolute", top:16, right:16, background:"rgba(255,255,255,0.15)", border:"none",
-          borderRadius:"50%", color:"#fff", width:36, height:36, fontSize:18, cursor:"pointer", zIndex:10000 }}>✕</button>
+    <div style={{ position:"fixed", inset:0, background:"#000", zIndex:9999, overflow:"hidden" }}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div style={{ position:"absolute", top:12, right:12, display:"flex", gap:8, zIndex:10000 }}>
+        {scale > 1.05 && (
+          <button onClick={reset}
+            style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:6, color:"#fff", padding:"6px 12px", fontSize:13, cursor:"pointer" }}>
+            Reset
+          </button>
+        )}
+        <button onClick={onClose}
+          style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:"50%", color:"#fff", width:36, height:36, fontSize:18, cursor:"pointer" }}>\u2715</button>
+      </div>
+      <div style={{ position:"absolute", top:12, left:12, color:"rgba(255,255,255,0.5)", fontSize:11, zIndex:10000 }}>
+        {scale > 1.05 ? Math.round(scale*100)+"%" : "Pessiga per ampliar"}
+      </div>
       <img src={url} alt="Fitxa"
-        style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", touchAction:"pinch-zoom" }}
-        onClick={e => e.stopPropagation()} />
+        style={{
+          position:"absolute", top:"50%", left:"50%",
+          transform:"translate(-50%,-50%) translate("+offset.x+"px,"+offset.y+"px) scale("+scale+")",
+          maxWidth:"100vw", maxHeight:"100vh", objectFit:"contain",
+          userSelect:"none", pointerEvents:"none",
+          transition: scale <= 1.05 ? "transform 0.2s" : "none"
+        }} />
     </div>
   );
 }
@@ -549,7 +601,7 @@ function BulkProcessor({ apiariArnes, onComplete, onClose }) {
               <div style={{ flex:1 }}>
                 <div style={{ color:"#f5e8a0", fontWeight:700, fontSize:14 }}>Foto {i+1}</div>
                 {it.status==="error"
-                  ? <div style={{ color:"#ff8888", fontSize:12 }}>No s'ha pogut llegir</div>
+                  ? <div style={{ color:"#ff8888", fontSize:12 }}>No s'ha pogut llegir — omple manualment</div>
                   : <div style={{ color:"#80c880", fontSize:12 }}>Llegida{it.result?.numero?" — Arna #"+it.result.numero:""}</div>
                 }
               </div>
@@ -562,7 +614,7 @@ function BulkProcessor({ apiariArnes, onComplete, onClose }) {
               </select>
             </div>
 
-            {it.status==="fet" && it.mode !== "skip" && (
+            {(it.status==="fet" || it.status==="error") && it.mode !== "skip" && (
               <div>
                 {it.mode==="revision" ? (
                   <div style={{ marginBottom:12 }}>
