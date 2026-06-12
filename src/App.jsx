@@ -235,10 +235,25 @@ function MeteoWidget({ lat, lng }) {
 }
 
 // ─── FORMULARI REVISIO ────────────────────────────────────────────────────────
+function FotoViewer({ url, onClose }) {
+  return (
+    <div onClick={onClose}
+      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:9999,
+        display:"flex", alignItems:"center", justifyContent:"center", touchAction:"pinch-zoom" }}>
+      <button onClick={onClose}
+        style={{ position:"absolute", top:16, right:16, background:"rgba(255,255,255,0.15)", border:"none",
+          borderRadius:"50%", color:"#fff", width:36, height:36, fontSize:18, cursor:"pointer", zIndex:10000 }}>✕</button>
+      <img src={url} alt="Fitxa"
+        style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", touchAction:"pinch-zoom" }}
+        onClick={e => e.stopPropagation()} />
+    </div>
+  );
+}
+
 function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, photoUrl }) {
   const [f, setF] = useState(initial || emptyReview());
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const [fotoGran, setFotoGran] = useState(false);
+  const [fotoViewer, setFotoViewer] = useState(false);
 
   useEffect(() => { if (initial) setF({ ...emptyReview(), ...initial }); }, [JSON.stringify(initial)]);
 
@@ -298,17 +313,18 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
     <div>
       {/* Foto de referència */}
       {photoUrl && (
-        <div style={{ marginBottom:14 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-            <span style={{ color:"#d4a855", fontSize:11, fontWeight:700 }}>FOTO DE LA FITXA</span>
-            <button onClick={() => setFotoGran(!fotoGran)} style={{ ...S.btnGhost, padding:"3px 8px", fontSize:11 }}>
-              {fotoGran ? "Reduir" : "Ampliar"}
-            </button>
+        <>
+          {fotoViewer && <FotoViewer url={photoUrl} onClose={() => setFotoViewer(false)} />}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+              <span style={{ color:"#d4a855", fontSize:11, fontWeight:700 }}>FOTO DE LA FITXA</span>
+              <span style={{ color:"#5a4a2a", fontSize:10 }}>Toca per ampliar a pantalla completa</span>
+            </div>
+            <img src={photoUrl} alt="Fitxa"
+              style={{ width:"100%", maxHeight:180, objectFit:"contain", borderRadius:8, border:"1px solid rgba(255,200,50,0.15)", background:"#0a0800", cursor:"zoom-in" }}
+              onClick={() => setFotoViewer(true)} />
           </div>
-          <img src={photoUrl} alt="Fitxa"
-            style={{ width:"100%", maxHeight: fotoGran ? "none" : 200, objectFit:"contain", borderRadius:8, border:"1px solid rgba(255,200,50,0.15)", background:"#0a0800", cursor:"pointer" }}
-            onClick={() => setFotoGran(!fotoGran)} />
-        </div>
+        </>
       )}
 
       <div style={{ maxHeight: compact ? "none" : "60vh", overflowY: compact ? "visible" : "auto", paddingRight: compact ? 0 : 4 }}>
