@@ -62,106 +62,100 @@ const FITXA_COORDENADES = {
   ]
 };
 
-const SYSTEM_PROMPT = `Ets un sistema d'anàlisi visual especialitzat en fitxes d'apicultura amb xinxetes.
+const SYSTEM_PROMPT = `Ets un expert en apicultura analitzant fotos de fitxes d'arna amb xinxetes de colors.
 
 DESCRIPCIÓ DE LA FITXA:
-- És un full de paper blanc format A4 HORITZONTAL (apaïsat), enganxat o clavat a una arna de fusta.
-- La foto pot estar inclinada, en angle, o amb parts de fusta visibles al voltant. IGNORA TOT EL QUE NO SIGUI EL PAPER BLANC.
-- El paper blanc té files horitzontals amb etiquetes a l'esquerra i caselles numerades/etiquetades cap a la dreta.
-- A dalt a la dreta del paper hi ha el codi REGA (ex: ES251111000007).
-- A dalt a l'esquerra hi ha "Arna numero" i al costat el número escrit a mà o imprès.
+- Full de paper blanc A4 HORITZONTAL fixat a una arna de fusta.
+- Té files horitzontals amb etiquetes a l'esquerra i opcions/números cap a la dreta.
+- Les XINXETES (boletes de colors: vermell, groc, blau, verd, blanc, rosa, lila, taronja) marquen el valor seleccionat a cada fila.
+- A dalt a l'esquerra: número d'arna (escrit gran a mà).
+- A dalt a la dreta: codi REGA (format ES + números llargs).
 
-XINXETES:
-- Són boletes de colors (vermell, groc, blau, verd, blanc, negre, taronja, rosa, lila) clavades al paper.
-- Cada xinxeta marca UN valor per fila. Si una fila NO té cap xinxeta, el valor és null.
-- El color de la xinxeta NO determina el valor — NOMÉS la posició horitzontal dins la fila.
-- Les xinxetes sobresurten del paper (tenen relleu 3D), busca les ombres circulars.
+ESTRATÈGIA DE LECTURA (usa la que funcioni millor per cada fila):
 
-INSTRUCCIONS CRÍTIQUES:
-1. Primer identifica els 4 cantons del paper blanc per corregir la perspectiva mentalment.
-2. Normalitza totes les posicions respecte al paper blanc (0.0=esquerra del paper, 1.0=dreta del paper).
-3. Llegeix el NÚMERO D'ARNA (dalt esquerra, escrit gran).
-4. Llegeix el REGA (dalt dreta, format ES + números).
-5. Per cada fila, localitza si hi ha una xinxeta i usa la seva posició X normalitzada per trobar el valor al mapa de coordenades.
-6. Tolerància: ±0.04 per files numèriques denses (dies), ±0.08 per files categòriques.
-7. Si no veus xinxeta en una fila, posa null — NO inventes valors.
+MÈTODE 1 — LECTURA DIRECTA DE TEXT:
+Si pots llegir el text imprès a la fila, busca quina opció té una xinxeta al costat o a sobre.
+Exemple: si a la fila "Mes" veus "Gener Febrer Març Abril Maig" i hi ha una xinxeta sobre "Març", el valor és "Març".
 
-MAPA DE COORDENADES (posicions X normalitzades 0.0-1.0 respecte el paper blanc):
+MÈTODE 2 — POSICIÓ RELATIVA:
+Si el text és il·legible o borrós, localitza la xinxeta i estima la seva posició X relativa dins la fila (0.0=esquerra, 1.0=dreta del paper) i compara amb el mapa de coordenades.
+
+MÈTODE 3 — INTUÏCIÓ APÍCOLA:
+Si la foto és molt borrosa però pots veure aproximadament on és la xinxeta, fes una estimació raonable basada en la posició visual. És millor una estimació que null, però marca-ho a "incertesa".
+
+REGLES:
+- Si una fila no té cap xinxeta visible, posa null.
+- Les xinxetes sobresurten del paper (relleu 3D) — busca les ombres circulars o els punts de color.
+- El COLOR de la xinxeta NO importa, només la POSICIÓ.
+- La foto pot estar en angle — normalitza mentalment respecte al rectangle blanc del paper.
+- Per la fila "Quadres amb cria" pot haver-hi UNA xinxeta numèrica (1-10) I fins a dues xinxetes més a la part dreta (Compacta/Pse/Dispersa).
+
+MAPA DE COORDENADES DE REFERÈNCIA:
 ${JSON.stringify(FITXA_COORDENADES, null, 2)}
 
-Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
-Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
+Retorna ÚNICAMENT aquest JSON (sense markdown):
 {
   "arna_numero": <enter o null>,
   "rega": <text o null>,
   "ultima_revisio_dia": <1-31 o null>,
-  "mes": <nom del mes en català o null>,
+  "mes": <"Gener"/"Febrer"/"Març"/"Abril"/"Maig"/"Juny"/"Juliol"/"Agost"/"Setembre"/"Octubre"/"Novembre"/"Desembre" o null>,
   "forca_colonia": <"Molt feble"/"Feble"/"Normal"/"Forta"/"Molt forta" o null>,
   "quadres_mel": <1-10, "Més de 10", o null>,
   "pollen": <"Gens"/"Poc"/"Una mica"/"Pse"/"Bastant"/"Moltíssim" o null>,
   "quadres_abelles": <1-14 o null>,
-  "quadres_cria": <1-10, "Compacta", "Pse", "Dispersa", o null>,
+  "quadres_cria": <1-10 o null>,
+  "cria_estat": <"Compacta"/"Pse"/"Dispersa" o null>,
   "estat_reina": <"Vista amb posta recent"/"No vista / Posta recent"/"Vista sense posta"/"Ni vista ni posta" o null>,
   "cel_les_reals": <1-24, "Més de 24", "Als extrems dels quadres", "A un sol quadre", o null>,
   "any_reina": <"0 Blau"/"1 Blanc"/"2 Groc"/"3 Vermell"/"4 Verd"/"5 Blau"/"6 Blanc"/"7 Groc"/"8 Vermell"/"9 Verd" o null>,
-  "varroa_mes_prova": <nom del mes en català o null>,
+  "varroa_mes_prova": <mes o null>,
   "varroa_dia_prova": <1-31 o null>,
   "varroa_percentatge": <"0 a 1%"/"2%"/"3%"/"Més de 3%" o null>,
-  "tractament_mes": <nom del mes en català o null>,
-  "tipus_tractament": <"Varromed"/"Oxàlic sublimat"/"Apivar"/"Apitraz"/"Altres"/"Més nucli sanitari" o null>,
+  "tractament_mes": <mes o null>,
+  "tipus_tractament": <"Varromed"/"Oxàlic sublimat"/"Apivar"/"Apitraz"/"Altres" o null>,
+  "nucli_sanitari": <true o false>,
   "quadres_buits": <1-14 o null>,
   "agressivitat": <"Calma total"/"La típica pesada i prou"/"Les guardianes"/"M'agobien"/"M'agobien molt"/"Uff marxo d'aquí" o null>,
-  "incertesa": []
+  "incertesa": [<llista de camps on has fet estimació>]
 }`;
 
 module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Mètode no permès' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Mètode no permès' });
 
   try {
     const { base64, mediaType, prompt_only, prompt } = req.body;
 
-    // Mode recomanacions de text
     if (prompt_only && prompt) {
       const response = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-sonnet-4-6",
         max_tokens: 600,
         messages: [{ role: "user", content: prompt }]
       });
-      const text = response.content.map(b => b.text || "").join("");
-      return res.status(200).json({ text });
+      return res.status(200).json({ text: response.content.map(b=>b.text||"").join("") });
     }
 
-    if (!base64 || !mediaType) {
-      return res.status(400).json({ error: 'Falten les dades de la imatge' });
-    }
+    if (!base64 || !mediaType) return res.status(400).json({ error: 'Falten dades' });
 
     const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-6",
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          { type: "text", text: "Analitza aquesta fitxa d'arna i retorna el JSON amb totes les dades." }
+          { type: "text", text: "Analitza aquesta fitxa d'arna. Usa tots els mètodes disponibles per llegir cada fila. Retorna el JSON." }
         ]
       }]
     });
 
-    const text = response.content.map(b => b.text || "").join("");
-    const iniciJSON = text.indexOf('{');
-    const finalJSON = text.lastIndexOf('}');
-
-    if (iniciJSON === -1 || finalJSON === -1) {
-      return res.status(500).json({ error: "La IA no ha retornat un JSON vàlid" });
-    }
-
-    return res.status(200).json(JSON.parse(text.substring(iniciJSON, finalJSON + 1)));
+    const text = response.content.map(b=>b.text||"").join("");
+    const i = text.indexOf('{'), j = text.lastIndexOf('}');
+    if (i===-1||j===-1) return res.status(500).json({ error: "JSON invàlid" });
+    return res.status(200).json(JSON.parse(text.substring(i,j+1)));
 
   } catch (error) {
-    console.error("Error al servidor Vercel:", error);
-    return res.status(500).json({ error: 'Error intern al servidor', detall: error.message });
+    console.error("Error:", error);
+    return res.status(500).json({ error: 'Error intern', detall: error.message });
   }
 };
