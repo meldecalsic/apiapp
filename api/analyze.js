@@ -65,28 +65,31 @@ const FITXA_COORDENADES = {
 const SYSTEM_PROMPT = `Ets un sistema d'anàlisi visual especialitzat en fitxes d'apicultura amb xinxetes.
 
 DESCRIPCIÓ DE LA FITXA:
-- És una planxa de plàstic blanc o groguenc, format A4 apaïsat (horitzontal), fixada a una arna de fusta.
-- La fitxa ocupa la major part de la imatge. IGNORA tot el que estigui fora del rectangle blanc de la fitxa.
-- Té files horitzontals, una per cada paràmetre. Cada fila té una etiqueta a l'esquerra i caselles numerades cap a la dreta.
-- Les XINXETES són boletes de colors (vermell, groc, blau, verd, blanc, negre, taronja) clavades al plàstic.
+- És un full de paper blanc format A4 HORITZONTAL (apaïsat), enganxat o clavat a una arna de fusta.
+- La foto pot estar inclinada, en angle, o amb parts de fusta visibles al voltant. IGNORA TOT EL QUE NO SIGUI EL PAPER BLANC.
+- El paper blanc té files horitzontals amb etiquetes a l'esquerra i caselles numerades/etiquetades cap a la dreta.
+- A dalt a la dreta del paper hi ha el codi REGA (ex: ES251111000007).
+- A dalt a l'esquerra hi ha "Arna numero" i al costat el número escrit a mà o imprès.
+
+XINXETES:
+- Són boletes de colors (vermell, groc, blau, verd, blanc, negre, taronja, rosa, lila) clavades al paper.
 - Cada xinxeta marca UN valor per fila. Si una fila NO té cap xinxeta, el valor és null.
+- El color de la xinxeta NO determina el valor — NOMÉS la posició horitzontal dins la fila.
+- Les xinxetes sobresurten del paper (tenen relleu 3D), busca les ombres circulars.
 
-UBICACIÓ ESPECIAL (sobre la primera fila de dies):
-- NÚMERO D'ARNA: escrit a mà o retolador a dalt a l'esquerra, sobre les caselles dels dies 1 i 2 (x≈0.11-0.14).
-- REGA: codi alfanumèric escrit a dalt, la R comença sobre el dia 22 (x≈0.662) i acaba l'últim dígit sobre el dia 30 (x≈0.869).
+INSTRUCCIONS CRÍTIQUES:
+1. Primer identifica els 4 cantons del paper blanc per corregir la perspectiva mentalment.
+2. Normalitza totes les posicions respecte al paper blanc (0.0=esquerra del paper, 1.0=dreta del paper).
+3. Llegeix el NÚMERO D'ARNA (dalt esquerra, escrit gran).
+4. Llegeix el REGA (dalt dreta, format ES + números).
+5. Per cada fila, localitza si hi ha una xinxeta i usa la seva posició X normalitzada per trobar el valor al mapa de coordenades.
+6. Tolerància: ±0.04 per files numèriques denses (dies), ±0.08 per files categòriques.
+7. Si no veus xinxeta en una fila, posa null — NO inventes valors.
 
-INSTRUCCIONS:
-1. Localitza el rectangle blanc de la fitxa i normalitza les coordenades respecte a ell (0.0=esquerra, 1.0=dreta, 0.0=dalt, 1.0=baix).
-2. Llegeix el NÚMERO D'ARNA (dalt esquerra, sobre dies 1-2).
-3. Llegeix el REGA (dalt, entre dies 22 i 30).
-4. Per cada fila, busca si hi ha una xinxeta. Usa la posició X per determinar el valor.
-5. Tolerància: ±0.04 per files numèriques denses, ±0.07 per files categòriques.
-6. Si no hi ha xinxeta en una fila, posa null.
-7. El color de la xinxeta NO determina el valor, només la POSICIÓ.
-
-MAPA DE COORDENADES:
+MAPA DE COORDENADES (posicions X normalitzades 0.0-1.0 respecte el paper blanc):
 ${JSON.stringify(FITXA_COORDENADES, null, 2)}
 
+Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
 Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
 {
   "arna_numero": <enter o null>,
