@@ -288,24 +288,20 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
         </div>
 
         <NullSel lbl="Estat reina" field="estatReina" opts={REINA}/>
-        <NullSel lbl="Any reina (color)" field="anyReina" opts={REICOLOR}/>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 8px"}}>
-          <NullNum lbl="Cel·les reials (0-24, o >24)" field="cellesReials" min={0} max={30}/>
+          <NullNum lbl="Cel·les reials (0=cap, >24=moltes)" field="cellesReials" min={0} max={30}/>
           <NullSel lbl="Ubicació cel·les reials" field="cellesReialsUbicacio" opts={["Als extrems dels quadres","Al mig dels quadres","A un sol quadre"]}/>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 8px"}}>
-          <NullNum lbl="Quadres buits" field="quadresBuits" min={0} max={14}/>
-          <NullSlider lbl="Agressivitat" field="agressivitat" min={0} max={5} opts={AGRESS}/>
-        </div>
+        <NullSel lbl="Any reina (color)" field="anyReina" opts={REICOLOR}/>
 
         <div style={{background:"rgba(255,50,50,0.05)",border:"1px solid rgba(255,80,80,0.15)",borderRadius:10,padding:12,marginBottom:12}}>
           <p style={{color:"#ff8888",fontSize:11,fontWeight:700,margin:"0 0 10px"}}>VARROA</p>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 8px"}}>
             <div style={{marginBottom:12}}>
-              <label style={S.label}>Data prova (dia/mes/any)</label>
-              <input type="date" value={f.varroaData||""} onChange={e=>set("varroaData",e.target.value||null)} style={{...S.input,color:!f.varroaData?"#5a4a2a":"#fff"}} placeholder="dd/mm/aaaa"/>
+              <label style={S.label}>Data prova varroa</label>
+              <input type="date" value={f.varroaData||""} onChange={e=>set("varroaData",e.target.value||null)} style={{...S.input,color:!f.varroaData?"#5a4a2a":"#fff"}}/>
             </div>
             <NullSlider lbl="% Varroa" field="varroaPct" min={0} max={3} opts={["0-1%","2%","3%","Mes de 3%"]}/>
           </div>
@@ -320,6 +316,9 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
             <NullSel lbl="Tipus tractament" field="tipusTractament" opts={TRACTA}/>
           </div>
         </div>
+
+        <NullNum lbl="Quadres buits" field="quadresBuits" min={0} max={14}/>
+        <NullSlider lbl="Agressivitat" field="agressivitat" min={0} max={5} opts={AGRESS}/>
 
         <div style={{marginBottom:14}}><label style={S.label}>Notes</label><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...S.input,resize:"vertical"}}/></div>
         <div style={{display:"flex",gap:8}}>
@@ -359,8 +358,8 @@ function AuthScreen({ onAuth }) {
       <div style={{...S.card,maxWidth:400,width:"100%"}}>
         <div style={{textAlign:"center",marginBottom:24}}>
           <div style={{fontSize:48}}>🍯</div>
-          <h1 style={{color:"#f5c842",fontSize:22,margin:"8px 0 4px"}}>CuidadorAbelles AI</h1>
-          <p style={{color:"#7a6040",fontSize:12,margin:0}}>Gestió Apícola Intel·ligent</p>
+          <h1 style={{color:"#f5c842",fontSize:22,margin:"8px 0 4px"}}>Abellaire</h1>
+          <p style={{color:"#7a6040",fontSize:12,margin:0}}>Gestió Apícola Intel·ligent amb IA</p>
         </div>
         <div style={{display:"flex",marginBottom:20,borderRadius:8,overflow:"hidden",border:"1px solid rgba(255,200,50,0.15)"}}>
           <button onClick={()=>setMode("login")} style={{flex:1,padding:"10px",background:mode==="login"?"rgba(245,200,66,0.15)":"transparent",border:"none",color:mode==="login"?"#f5c842":"#6b5a3a",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>Iniciar sessió</button>
@@ -423,7 +422,7 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
     <div style={{...S.page,padding:"0 0 40px"}}>
       <div style={{maxWidth:600,margin:"0 auto",padding:"0 16px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 0 14px",borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
-          <div><h1 style={{color:"#f5c842",fontSize:20,margin:0}}>🍯 CuidadorAbelles AI</h1><p style={{color:"#7a6040",fontSize:11,margin:"2px 0 0"}}>{usuari.email}</p></div>
+          <div><h1 style={{color:"#f5c842",fontSize:20,margin:0}}>🍯 Abellaire</h1><p style={{color:"#7a6040",fontSize:11,margin:"2px 0 0"}}>{usuari.email}</p></div>
           <button onClick={onLogout} style={{...S.btnGhost,fontSize:12,padding:"6px 12px"}}>Tancar sessió</button>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"20px 0 16px"}}>
@@ -439,7 +438,7 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
             <h3 style={{color:"#f5c842",margin:"0 0 14px",fontSize:15}}>Nova Explotació</h3>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div><label style={S.label}>Nom</label><input value={nom} onChange={e=>setNom(e.target.value)} style={S.input} placeholder="Cal Mel de la Muntanya"/></div>
-              <div><label style={S.label}>REGA</label><input value={rega} onChange={e=>setRega(e.target.value.toUpperCase())} style={S.input} placeholder="ES-08-12345"/></div>
+              <div><label style={S.label}>REGA</label><input value={rega} onChange={e=>setRega(e.target.value.toUpperCase())} style={S.input} placeholder="ES1216545645216547"/></div>
               <div><label style={S.label}>Contrasenya d'accés</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} style={S.input} placeholder="Per compartir amb altres"/></div>
               {err&&<div style={{color:"#ff8888",fontSize:13}}>{err}</div>}
               <div style={{display:"flex",gap:8}}>
@@ -453,7 +452,7 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
           <div style={{...S.card,marginBottom:16}}>
             <h3 style={{color:"#f5c842",margin:"0 0 14px",fontSize:15}}>Unir-se a una Explotació</h3>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <div><label style={S.label}>REGA</label><input value={rega} onChange={e=>setRega(e.target.value.toUpperCase())} style={S.input} placeholder="ES-08-12345"/></div>
+              <div><label style={S.label}>REGA</label><input value={rega} onChange={e=>setRega(e.target.value.toUpperCase())} style={S.input} placeholder="ES1216545645216547"/></div>
               <div><label style={S.label}>Contrasenya</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} style={S.input}/></div>
               {err&&<div style={{color:"#ff8888",fontSize:13}}>{err}</div>}
               <div style={{display:"flex",gap:8}}>
