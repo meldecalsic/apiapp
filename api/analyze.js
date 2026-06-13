@@ -1,235 +1,88 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY, // ⚠️ MAI posar la key aquí directament
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAPA DE COORDENADES DE LA FITXA
-// Extret del PDF original: plantilla_arna_xinxetes_full_calcul.pdf
-// Coordenades normalitzades (0.0–1.0) respecte la pàgina A4 apaïsat (842×595)
-// Cada valor té la seva posició X exacta. La IA NO ha de llegir text de la fitxa.
-// ─────────────────────────────────────────────────────────────────────────────
 const FITXA_COORDENADES = {
   page_size: { width: 842, height: 595 },
   label_zone_x_max: 0.107,
   rows: [
-    {
-      id: "ultima_revisio_dia",
-      label: "Última revisió dia",
-      y_center: 0.0853, y_range: [0.0739, 0.0958],
-      type: "numeric",
-      values: {
-        "1":0.1169,"2":0.1428,"3":0.1688,"4":0.1947,"5":0.2207,
-        "6":0.2466,"7":0.2726,"8":0.2985,"9":0.3245,"10":0.3504,
-        "11":0.3764,"12":0.4023,"13":0.4283,"14":0.4542,"15":0.4802,
-        "16":0.5061,"17":0.5321,"18":0.5580,"19":0.5840,"20":0.6099,
-        "21":0.6359,"22":0.6618,"23":0.6878,"24":0.7137,"25":0.7397,
-        "26":0.7656,"27":0.7916,"28":0.8175,"29":0.8435,"30":0.8694,"31":0.8954
-      }
+    { id:"ultima_revisio_dia", label:"Última revisió dia", y_center:0.0853, y_range:[0.0739,0.0958], type:"numeric",
+      values:{"1":0.1169,"2":0.1428,"3":0.1688,"4":0.1947,"5":0.2207,"6":0.2466,"7":0.2726,"8":0.2985,"9":0.3245,"10":0.3504,"11":0.3764,"12":0.4023,"13":0.4283,"14":0.4542,"15":0.4802,"16":0.5061,"17":0.5321,"18":0.5580,"19":0.5840,"20":0.6099,"21":0.6359,"22":0.6618,"23":0.6878,"24":0.7137,"25":0.7397,"26":0.7656,"27":0.7916,"28":0.8175,"29":0.8435,"30":0.8694,"31":0.8954}
     },
-    {
-      id: "mes",
-      label: "Mes",
-      y_center: 0.1377, y_range: [0.1143, 0.1613],
-      type: "categorical",
-      values: {
-        "Gener":0.1299,"Febrer":0.1817,"Març":0.2336,"Abril":0.2856,
-        "Maig":0.3374,"Juny":0.3894,"Juliol":0.4413,"Agost":0.4932,
-        "Setembre":0.5451,"Octubre":0.5970,"Novembre":0.6489,"Desembre":0.7008
-      }
+    { id:"mes", label:"Mes", y_center:0.1377, y_range:[0.1143,0.1613], type:"categorical",
+      values:{"Gener":0.1299,"Febrer":0.1817,"Març":0.2336,"Abril":0.2856,"Maig":0.3374,"Juny":0.3894,"Juliol":0.4413,"Agost":0.4932,"Setembre":0.5451,"Octubre":0.5970,"Novembre":0.6489,"Desembre":0.7008}
     },
-    {
-      id: "forca_colonia",
-      label: "Força colònia",
-      y_center: 0.1902, y_range: [0.1681, 0.2151],
-      type: "scale",
-      values: {
-        "Molt feble":0.1818,"Feble":0.3375,"Normal":0.4932,
-        "Forta":0.6489,"Molt forta":0.8046
-      }
+    { id:"forca_colonia", label:"Força colònia", y_center:0.1902, y_range:[0.1681,0.2151], type:"scale",
+      values:{"Molt feble":0.1818,"Feble":0.3375,"Normal":0.4932,"Forta":0.6489,"Molt forta":0.8046}
     },
-    {
-      id: "quadres_mel",
-      label: "Quadres amb mel",
-      y_center: 0.2426, y_range: [0.2202, 0.2672],
-      type: "numeric",
-      values: {
-        "1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,
-        "6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,
-        "Més de 10":0.6489
-      }
+    { id:"quadres_mel", label:"Quadres amb mel", y_center:0.2426, y_range:[0.2202,0.2672], type:"numeric",
+      values:{"1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,"6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,"Més de 10":0.6489}
     },
-    {
-      id: "pollen",
-      label: "Pol·len",
-      y_center: 0.2950, y_range: [0.2739, 0.3193],
-      type: "scale",
-      values: {
-        "Gens":0.1688,"Poc":0.2985,"Una mica":0.4283,
-        "Pse":0.5581,"Bastant":0.6878,"Moltíssim":0.8176
-      }
+    { id:"pollen", label:"Pol·len", y_center:0.2950, y_range:[0.2739,0.3193], type:"scale",
+      values:{"Gens":0.1688,"Poc":0.2985,"Una mica":0.4283,"Pse":0.5581,"Bastant":0.6878,"Moltíssim":0.8176}
     },
-    {
-      id: "quadres_abelles",
-      label: "Quadres amb abelles",
-      y_center: 0.3475, y_range: [0.3261, 0.3832],
-      type: "numeric",
-      values: {
-        "1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,
-        "6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,
-        "11":0.6489,"12":0.7008,"13":0.7527,"14":0.8046
-      }
+    { id:"quadres_abelles", label:"Quadres amb abelles", y_center:0.3475, y_range:[0.3261,0.3832], type:"numeric",
+      values:{"1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,"6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,"11":0.6489,"12":0.7008,"13":0.7527,"14":0.8046}
     },
-    {
-      id: "quadres_cria",
-      label: "Quadres amb cria",
-      y_center: 0.3997, y_range: [0.3782, 0.4252],
-      type: "numeric_plus",
-      values: {
-        "1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,
-        "6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,
-        "Compacta":0.6619,"Pse":0.7398,"Dispersa":0.8435
-      }
+    { id:"quadres_cria", label:"Quadres amb cria", y_center:0.3997, y_range:[0.3782,0.4252], type:"numeric_plus",
+      values:{"1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,"6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,"Compacta":0.6619,"Pse":0.7398,"Dispersa":0.8435}
     },
-    {
-      id: "estat_reina",
-      label: "Estat reina",
-      y_center: 0.4522, y_range: [0.4303, 0.4773],
-      type: "categorical",
-      values: {
-        "Vista amb posta recent":0.1687,
-        "No vista / Posta recent":0.2985,
-        "Vista sense posta":0.4283,
-        "Ni vista ni posta":0.5581
-      }
+    { id:"estat_reina", label:"Estat reina", y_center:0.4522, y_range:[0.4303,0.4773], type:"categorical",
+      values:{"Vista amb posta recent":0.1687,"No vista / Posta recent":0.2985,"Vista sense posta":0.4283,"Ni vista ni posta":0.5581}
     },
-    {
-      id: "cel_les_reals",
-      label: "Cel·les reals?",
-      y_center: 0.5046, y_range: [0.4824, 0.5311],
-      type: "numeric_plus",
-      values: {
-        "1":0.1169,"2":0.1428,"3":0.1688,"4":0.1947,"5":0.2207,
-        "6":0.2466,"7":0.2726,"8":0.2985,"9":0.3245,"10":0.3504,
-        "11":0.3764,"12":0.4023,"13":0.4283,"14":0.4542,"15":0.4802,
-        "16":0.5061,"17":0.5321,"18":0.5580,"19":0.5840,"20":0.6099,
-        "21":0.6359,"22":0.6618,"23":0.6878,"24":0.7137,
-        "Més al mig dels quadres":0.7398,
-        "Als extrems dels quadres":0.7787,
-        "A un sol quadre":0.8825
-      }
+    { id:"cel_les_reals", label:"Cel·les reals?", y_center:0.5046, y_range:[0.4824,0.5311], type:"numeric_plus",
+      values:{"1":0.1169,"2":0.1428,"3":0.1688,"4":0.1947,"5":0.2207,"6":0.2466,"7":0.2726,"8":0.2985,"9":0.3245,"10":0.3504,"11":0.3764,"12":0.4023,"13":0.4283,"14":0.4542,"15":0.4802,"16":0.5061,"17":0.5321,"18":0.5580,"19":0.5840,"20":0.6099,"21":0.6359,"22":0.6618,"23":0.6878,"24":0.7137,"Més de 24":0.7398,"Als extrems dels quadres":0.7787,"A un sol quadre":0.8825}
     },
-    {
-      id: "any_reina",
-      label: "Any reina",
-      y_center: 0.5571, y_range: [0.5345, 0.5815],
-      type: "categorical",
-      values: {
-        "0 Blau":0.1429,"1 Blanc":0.2207,"2 Groc":0.2985,
-        "3 Vermell":0.3764,"4 Verd":0.4542,"5 Blau":0.5321,
-        "6 Blanc":0.6100,"7 Groc":0.6878,"8 Vermell":0.7657,"9 Verd":0.8435
-      }
+    { id:"any_reina", label:"Any reina", y_center:0.5571, y_range:[0.5345,0.5815], type:"categorical",
+      values:{"0 Blau":0.1429,"1 Blanc":0.2207,"2 Groc":0.2985,"3 Vermell":0.3764,"4 Verd":0.4542,"5 Blau":0.5321,"6 Blanc":0.6100,"7 Groc":0.6878,"8 Vermell":0.7657,"9 Verd":0.8435}
     },
-    {
-      id: "varroa_mes_prova",
-      label: "Varroa mes prova",
-      y_center: 0.6095, y_range: [0.5882, 0.6336],
-      type: "categorical",
-      values: {
-        "Gener":0.1299,"Febrer":0.1817,"Març":0.2336,"Abril":0.2856,
-        "Maig":0.3374,"Juny":0.3894,"Juliol":0.4413,"Agost":0.4932,
-        "Setembre":0.5451,"Octubre":0.5970,"Novembre":0.6489,"Desembre":0.7008
-      }
+    { id:"varroa_mes_prova", label:"Varroa mes prova", y_center:0.6095, y_range:[0.5882,0.6336], type:"categorical",
+      values:{"Gener":0.1299,"Febrer":0.1817,"Març":0.2336,"Abril":0.2856,"Maig":0.3374,"Juny":0.3894,"Juliol":0.4413,"Agost":0.4932,"Setembre":0.5451,"Octubre":0.5970,"Novembre":0.6489,"Desembre":0.7008}
     },
-    {
-      id: "varroa_dia_prova",
-      label: "Varroa dia prova",
-      y_center: 0.6619, y_range: [0.6403, 0.6857],
-      type: "numeric",
-      values: {
-        "1":0.1169,"2":0.1428,"3":0.1688,"4":0.1947,"5":0.2207,
-        "6":0.2466,"7":0.2726,"8":0.2985,"9":0.3245,"10":0.3504,
-        "11":0.3764,"12":0.4023,"13":0.4283,"14":0.4542,"15":0.4802,
-        "16":0.5061,"17":0.5321,"18":0.5580,"19":0.5840,"20":0.6099,
-        "21":0.6359,"22":0.6618,"23":0.6878,"24":0.7137,"25":0.7397,
-        "26":0.7656,"27":0.7916,"28":0.8175,"29":0.8435,"30":0.8694,"31":0.8954
-      }
+    { id:"varroa_dia_prova", label:"Varroa dia prova", y_center:0.6619, y_range:[0.6403,0.6857], type:"numeric",
+      values:{"1":0.1169,"2":0.1428,"3":0.1688,"4":0.1947,"5":0.2207,"6":0.2466,"7":0.2726,"8":0.2985,"9":0.3245,"10":0.3504,"11":0.3764,"12":0.4023,"13":0.4283,"14":0.4542,"15":0.4802,"16":0.5061,"17":0.5321,"18":0.5580,"19":0.5840,"20":0.6099,"21":0.6359,"22":0.6618,"23":0.6878,"24":0.7137,"25":0.7397,"26":0.7656,"27":0.7916,"28":0.8175,"29":0.8435,"30":0.8694,"31":0.8954}
     },
-    {
-      id: "varroa_percentatge",
-      label: "Varroa %",
-      y_center: 0.7144, y_range: [0.6924, 0.7378],
-      type: "scale",
-      values: {
-        "0 a 1%":0.1289,"2%":0.1948,"3%":0.2596,"Més de 3%":0.3115
-      }
+    { id:"varroa_percentatge", label:"Varroa %", y_center:0.7144, y_range:[0.6924,0.7378], type:"scale",
+      values:{"0 a 1%":0.1289,"2%":0.1948,"3%":0.2596,"Més de 3%":0.3115}
     },
-    {
-      id: "tractament_mes",
-      label: "Tractament fet el mes",
-      y_center: 0.7668, y_range: [0.7445, 0.8000],
-      type: "categorical",
-      values: {
-        "Gener":0.1299,"Febrer":0.1817,"Març":0.2336,"Abril":0.2856,
-        "Maig":0.3374,"Juny":0.3894,"Juliol":0.4413,"Agost":0.4932,
-        "Setembre":0.5451,"Octubre":0.5970,"Novembre":0.6489,"Desembre":0.7008
-      }
+    { id:"tractament_mes", label:"Tractament fet el mes", y_center:0.7668, y_range:[0.7445,0.8000], type:"categorical",
+      values:{"Gener":0.1299,"Febrer":0.1817,"Març":0.2336,"Abril":0.2856,"Maig":0.3374,"Juny":0.3894,"Juliol":0.4413,"Agost":0.4932,"Setembre":0.5451,"Octubre":0.5970,"Novembre":0.6489,"Desembre":0.7008}
     },
-    {
-      id: "tipus_tractament",
-      label: "Tipus de tractament",
-      y_center: 0.8192, y_range: [0.7966, 0.8521],
-      type: "categorical",
-      values: {
-        "Varromed":0.1558,"Oxàlic sublimat":0.2596,"Apivar":0.3635,
-        "Apitraz":0.4673,"Altres":0.5711,"Més nucli sanitari":0.6748
-      }
+    { id:"tipus_tractament", label:"Tipus de tractament", y_center:0.8192, y_range:[0.7966,0.8521], type:"categorical",
+      values:{"Varromed":0.1558,"Oxàlic sublimat":0.2596,"Apivar":0.3635,"Apitraz":0.4673,"Altres":0.5711,"Més nucli sanitari":0.6748}
     },
-    {
-      id: "quadres_buits",
-      label: "Quadres buits",
-      y_center: 0.8717, y_range: [0.8504, 0.8975],
-      type: "numeric",
-      values: {
-        "1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,
-        "6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,
-        "11":0.6489,"12":0.7008,"13":0.7527,"14":0.8046
-      }
+    { id:"quadres_buits", label:"Quadres buits", y_center:0.8717, y_range:[0.8504,0.8975], type:"numeric",
+      values:{"1":0.1298,"2":0.1818,"3":0.2337,"4":0.2856,"5":0.3375,"6":0.3894,"7":0.4413,"8":0.4932,"9":0.5451,"10":0.5970,"11":0.6489,"12":0.7008,"13":0.7527,"14":0.8046}
     },
-    {
-      id: "agressivitat",
-      label: "Agressivitat",
-      y_center: 0.9241, y_range: [0.9025, 0.9496],
-      type: "scale",
-      values: {
-        "Calma total":0.1558,"La típica pesada i prou":0.2596,
-        "Les guardianes":0.3635,"M'agobien":0.4672,
-        "M'agobien molt":0.5710,"Uff marxo d'aquí":0.6749
-      }
+    { id:"agressivitat", label:"Agressivitat", y_center:0.9241, y_range:[0.9025,0.9496], type:"scale",
+      values:{"Calma total":0.1558,"La típica pesada i prou":0.2596,"Les guardianes":0.3635,"M'agobien":0.4672,"M'agobien molt":0.5710,"Uff marxo d'aquí":0.6749}
     }
   ]
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SYSTEM PROMPT
-// ─────────────────────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `Ets un sistema d'anàlisi visual especialitzat en fitxes d'apicultura amb xinxetes.
 
 DESCRIPCIÓ DE LA FITXA:
-- És una planxa de plàstic blanc o groguenc, format A4 apaïsat, fixada a una arna de fusta.
-- Té files horitzontals, una per cada paràmetre. Cada fila té una etiqueta a l'esquerra i caselles numerades o etiquetades cap a la dreta.
-- Les XINXETES són boletes de colors (vermell, groc, blau, verd, blanc, negre, taronja) clavades al plàstic. Cada xinxeta marca UN valor per fila.
-- Si una fila NO té cap xinxeta, el valor és null.
-- El número d'arna sol estar escrit a mà amb retolador a la part superior esquerra.
+- És una planxa de plàstic blanc o groguenc, format A4 apaïsat (horitzontal), fixada a una arna de fusta.
+- La fitxa ocupa la major part de la imatge. IGNORA tot el que estigui fora del rectangle blanc de la fitxa.
+- Té files horitzontals, una per cada paràmetre. Cada fila té una etiqueta a l'esquerra i caselles numerades cap a la dreta.
+- Les XINXETES són boletes de colors (vermell, groc, blau, verd, blanc, negre, taronja) clavades al plàstic.
+- Cada xinxeta marca UN valor per fila. Si una fila NO té cap xinxeta, el valor és null.
+
+UBICACIÓ ESPECIAL (sobre la primera fila de dies):
+- NÚMERO D'ARNA: escrit a mà o retolador a dalt a l'esquerra, sobre les caselles dels dies 1 i 2 (x≈0.11-0.14).
+- REGA: codi alfanumèric escrit a dalt, la R comença sobre el dia 22 (x≈0.662) i acaba l'últim dígit sobre el dia 30 (x≈0.869).
 
 INSTRUCCIONS:
-1. Identifica el NÚMERO D'ARNA — escrit a mà o imprès a dalt a l'esquerra.
-2. Per cada fila, busca si hi ha una xinxeta. Si no n'hi ha, posa null.
-3. Usa les coordenades normalitzades del JSON per determinar quin valor correspon a la posició X de la xinxeta.
-4. Tolerància posició: ±0.04 per files numèriques denses, ±0.07 per files categòriques.
-5. Si la foto és borrosa o la xinxeta és ambigua, posa null i afegeix el camp a "incertesa".
-6. Les xinxetes poden ser de qualsevol color — el color NO determina el valor, només la POSICIÓ.
+1. Localitza el rectangle blanc de la fitxa i normalitza les coordenades respecte a ell (0.0=esquerra, 1.0=dreta, 0.0=dalt, 1.0=baix).
+2. Llegeix el NÚMERO D'ARNA (dalt esquerra, sobre dies 1-2).
+3. Llegeix el REGA (dalt, entre dies 22 i 30).
+4. Per cada fila, busca si hi ha una xinxeta. Usa la posició X per determinar el valor.
+5. Tolerància: ±0.04 per files numèriques denses, ±0.07 per files categòriques.
+6. Si no hi ha xinxeta en una fila, posa null.
+7. El color de la xinxeta NO determina el valor, només la POSICIÓ.
 
 MAPA DE COORDENADES:
 ${JSON.stringify(FITXA_COORDENADES, null, 2)}
@@ -237,6 +90,7 @@ ${JSON.stringify(FITXA_COORDENADES, null, 2)}
 Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
 {
   "arna_numero": <enter o null>,
+  "rega": <text o null>,
   "ultima_revisio_dia": <1-31 o null>,
   "mes": <nom del mes en català o null>,
   "forca_colonia": <"Molt feble"/"Feble"/"Normal"/"Forta"/"Molt forta" o null>,
@@ -245,7 +99,7 @@ Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
   "quadres_abelles": <1-14 o null>,
   "quadres_cria": <1-10, "Compacta", "Pse", "Dispersa", o null>,
   "estat_reina": <"Vista amb posta recent"/"No vista / Posta recent"/"Vista sense posta"/"Ni vista ni posta" o null>,
-  "cel_les_reals": <1-24, "Més al mig dels quadres", "Als extrems dels quadres", "A un sol quadre", o null>,
+  "cel_les_reals": <1-24, "Més de 24", "Als extrems dels quadres", "A un sol quadre", o null>,
   "any_reina": <"0 Blau"/"1 Blanc"/"2 Groc"/"3 Vermell"/"4 Verd"/"5 Blau"/"6 Blanc"/"7 Groc"/"8 Vermell"/"9 Verd" o null>,
   "varroa_mes_prova": <nom del mes en català o null>,
   "varroa_dia_prova": <1-31 o null>,
@@ -256,41 +110,44 @@ Retorna ÚNICAMENT aquest JSON (sense text addicional ni markdown):
   "agressivitat": <"Calma total"/"La típica pesada i prou"/"Les guardianes"/"M'agobien"/"M'agobien molt"/"Uff marxo d'aquí" o null>,
   "incertesa": []
 }`;
-// ─────────────────────────────────────────────────────────────────────────────
-// HANDLER
-// ─────────────────────────────────────────────────────────────────────────────
-export default async function handler(req, res) {
+
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Mètode no permès' });
   }
 
   try {
-    const { base64, mediaType } = req.body;
+    const { base64, mediaType, prompt_only, prompt } = req.body;
+
+    // Mode recomanacions de text
+    if (prompt_only && prompt) {
+      const response = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 600,
+        messages: [{ role: "user", content: prompt }]
+      });
+      const text = response.content.map(b => b.text || "").join("");
+      return res.status(200).json({ text });
+    }
+
     if (!base64 || !mediaType) {
       return res.status(400).json({ error: 'Falten les dades de la imatge' });
     }
 
     const response = await anthropic.messages.create({
-     model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{
         role: "user",
         content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data: base64 }
-          },
-          {
-            type: "text",
-            text: "Analitza aquesta fitxa d'arna i retorna el JSON amb totes les dades."
-          }
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: "Analitza aquesta fitxa d'arna i retorna el JSON amb totes les dades." }
         ]
       }]
     });
 
     const text = response.content.map(b => b.text || "").join("");
-
     const iniciJSON = text.indexOf('{');
     const finalJSON = text.lastIndexOf('}');
 
@@ -298,16 +155,10 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "La IA no ha retornat un JSON vàlid" });
     }
 
-    const jsonNet = text.substring(iniciJSON, finalJSON + 1);
-    return res.status(200).json(JSON.parse(jsonNet));
+    return res.status(200).json(JSON.parse(text.substring(iniciJSON, finalJSON + 1)));
 
   } catch (error) {
     console.error("Error al servidor Vercel:", error);
-    console.error("Error message:", error.message);
-    console.error("Error status:", error.status);
-    return res.status(500).json({ 
-      error: 'Error intern al servidor',
-      detall: error.message
-    });
+    return res.status(500).json({ error: 'Error intern al servidor', detall: error.message });
   }
-}
+};
