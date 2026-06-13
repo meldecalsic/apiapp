@@ -5,10 +5,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 const _supa = createClient("https://xhuksvsvltqqprnjzoqj.supabase.co", "sb_publishable_YS2ygpjAVM6jMkOvrJrfqA_fXuvusxJ");
 
 const FORCE   = ["Molt feble","Feble","Normal","Forta","Molt forta"];
-const POLLEN  = ["Gens","Poc","Una mica","Pou","Bastant","Moltissim"];
+const POLLEN  = ["Gens","Poc","Una mica","Pse","Bastant","Moltíssim"];
 const REINA   = ["Vista amb posta recent","No vista posta recent","Vista sense posta","Ni vista ni posta"];
 const AGRESS  = ["Calma total","La tipica pesada i prou","Les guardianes","M'agobien","M'agobien molt","Uff marxo d'aqui"];
-const TRACTA  = ["Cap","Varromed","Oxalic sublimacio","Apivar","Apitraz","Altres","Mes nuclei sanitat"];
+const TRACTA  = ["Cap","Varromed","Oxalic sublimacio","Apivar","Apitraz","Altres"];
 const REICOLOR= ["0 Blau","1 Blanc","2 Groc","3 Vermell","4 Verd","5 Blau","6 Blanc","7 Groc","8 Vermell","9 Verd"];
 const MONTHS  = ["Gener","Febrer","Marc","Abril","Maig","Juny","Juliol","Agost","Setembre","Octubre","Novembre","Desembre"];
 const FLORACIO= {0:"Avellaner, Ametller",1:"Ametller, Cirerer silvestre",2:"Cirerer, Prunera, Romani",3:"Taronger, Poma, Pera",4:"Romani, Salvia, Castanyer",5:"Castanyer, Tilia, Farigola",6:"Farigola, Esporgall, Girasol",7:"Girasol, Buguenvillea, Heura",8:"Heura, Arbustos tardor",9:"Heura, Boix",10:"Eucaliptus (costaneres)",11:"Repos hivernal"};
@@ -42,6 +42,24 @@ const tractaMap   = {"Varromed":1,"Oxàlic sublimat":2,"Apivar":3,"Apitraz":4,"A
 const anyReinaMap = {"0 Blau":0,"1 Blanc":1,"2 Groc":2,"3 Vermell":3,"4 Verd":4,"5 Blau":5,"6 Blanc":6,"7 Groc":7,"8 Vermell":8,"9 Verd":9};
 const mesMap      = {"Gener":0,"Febrer":1,"Març":2,"Abril":3,"Maig":4,"Juny":5,"Juliol":6,"Agost":7,"Setembre":8,"Octubre":9,"Novembre":10,"Desembre":11};
 
+// Indicador qualitat arna
+function qualitat(revs) {
+  if (!revs.length) return null;
+  const last = revs[revs.length-1];
+  let score = 0; let factors = [];
+  if (last.forcaColonia != null) { score += last.forcaColonia * 20; factors.push("Força: "+FORCE[last.forcaColonia]); }
+  if (last.estatReina != null) { const q = [25,10,5,0][last.estatReina]; score += q; factors.push("Reina: "+REINA[last.estatReina]); }
+  if (last.varroaPct != null) { const q = [25,15,5,0][last.varroaPct]; score += q; factors.push("Varroa: "+["0-1%","2%","3%",">3%"][last.varroaPct]); }
+  if (last.cellesReials > 0) { score -= 10; factors.push("Cel·les reials detectades"); }
+  score = Math.max(0, Math.min(100, score));
+  let nivell, color, emoji;
+  if (score >= 70) { nivell = "Excel·lent per partir/nuclis"; color = "#80c880"; emoji = "🟢"; }
+  else if (score >= 45) { nivell = "Bona per producció"; color = "#f5c842"; emoji = "🟡"; }
+  else if (score >= 20) { nivell = "Necessita atenció"; color = "#ff9944"; emoji = "🟠"; }
+  else { nivell = "Crítica"; color = "#ff4444"; emoji = "🔴"; }
+  return { score, nivell, color, emoji, factors };
+}
+
 function parseAnalyzeResponse(data) {
   const criaVal = data.quadres_cria;
   const criaNum = typeof criaVal === "number" ? criaVal : null;
@@ -49,20 +67,21 @@ function parseAnalyzeResponse(data) {
   const criaEstat = (typeof criaVal === "string" && criaEstatMap[criaVal]) ? criaEstatMap[criaVal] : null;
   return {
     numero: data.arna_numero ?? null,
+    date: data.ultima_revisio_dia && data.mes ? `${new Date().getFullYear()}-${String(mesMap[data.mes]+1).padStart(2,"0")}-${String(data.ultima_revisio_dia).padStart(2,"0")}` : new Date().toISOString().split("T")[0],
     forcaColonia: data.forca_colonia != null ? (forcaMap[data.forca_colonia] ?? null) : null,
     quadresMel: typeof data.quadres_mel === "number" ? data.quadres_mel : null,
     pollen: data.pollen != null ? (pollenMap[data.pollen] ?? null) : null,
     quadresAbelles: typeof data.quadres_abelles === "number" ? data.quadres_abelles : null,
     quadresCria: criaNum, criaEstat,
     estatReina: data.estat_reina != null ? (reinaMap[data.estat_reina] ?? null) : null,
-    cellesReials: typeof data.cel_les_reals === "number" ? data.cel_les_reals : null,
-    cellesReialsUbicacio: typeof data.cel_les_reals === "string" ? data.cel_les_reals : null,
+    cellesReials: typeof data.cel_les_reals === "number" ? data.cel_les_reals : (data.cel_les_reals === "Més de 24" ? 25 : null),
+    cellesReialsUbicacio: typeof data.cel_les_reals === "string" && data.cel_les_reals !== "Més de 24" ? data.cel_les_reals : null,
     anyReina: data.any_reina != null ? (anyReinaMap[data.any_reina] ?? null) : null,
-    varroaMes: data.varroa_mes_prova != null ? (mesMap[data.varroa_mes_prova] ?? null) : null,
-    varroaDia: typeof data.varroa_dia_prova === "number" ? data.varroa_dia_prova : null,
+    varroaData: data.varroa_mes_prova && data.varroa_dia_prova ? `${new Date().getFullYear()}-${String(mesMap[data.varroa_mes_prova]+1).padStart(2,"0")}-${String(data.varroa_dia_prova).padStart(2,"0")}` : null,
     varroaPct: data.varroa_percentatge != null ? (varroaMap[data.varroa_percentatge] ?? null) : null,
     tractamentMes: data.tractament_mes != null ? (mesMap[data.tractament_mes] ?? null) : null,
     tipusTractament: data.tipus_tractament != null ? (tractaMap[data.tipus_tractament] ?? null) : null,
+    nucliSanitari: data.nucli_sanitari ?? false,
     quadresBuits: typeof data.quadres_buits === "number" ? data.quadres_buits : null,
     agressivitat: null, notes: "",
   };
@@ -89,12 +108,12 @@ async function getRecomanacions(last) {
   if (!last) return "Sense dades suficients.";
   const varroaLabels = ["0-1%","2%","3%","mes de 3%"];
   const prompt = "Expert apicultor. Dona 3-4 recomanacions breus en catala per aquesta arna. "+
-    "Revisio "+last.date+". Forca="+(last.forcaColonia!=null?FORCE[last.forcaColonia]:"desconeguda")+
+    "Revisio "+last.date+". Forca="+(last.forcaColonia!=null?FORCE[last.forcaColonia]:"?")+
     ", mel="+(last.quadresMel??"?")+", abelles="+(last.quadresAbelles??"?")+
     ", cria="+(last.quadresCria??"?")+" "+(last.criaEstat||"")+
-    ", reina="+(last.estatReina!=null?REINA[last.estatReina]:"desconeguda")+
+    ", reina="+(last.estatReina!=null?REINA[last.estatReina]:"?")+
     ", celles="+(last.cellesReials??"?")+
-    ", varroa="+(last.varroaPct!=null?varroaLabels[last.varroaPct]:"desconeguda")+
+    ", varroa="+(last.varroaPct!=null?varroaLabels[last.varroaPct]:"?")+
     ", tractament="+(last.tipusTractament!=null?TRACTA[last.tipusTractament]:"cap")+". Format llista amb emojis.";
   try {
     const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({prompt_only:true,prompt}) });
@@ -181,9 +200,9 @@ function MeteoWidget({ lat, lng, altitud }) {
         </div>
       )}
       <div style={{marginTop:8,padding:"6px 10px",background:"rgba(80,140,60,0.1)",borderRadius:6,border:"1px solid rgba(80,140,60,0.2)",fontSize:12}}>
-        <span style={{color:"#7ac87a"}}>Floracio estimada: </span>
+        <span style={{color:"#7ac87a"}}>Floracio: </span>
         <span style={{color:"#a8d8a8"}}>{FLORACIO[new Date().getMonth()]}</span>
-        {altitud>0&&<span style={{color:"#5a6a4a"}}> (alt. {altitud}m)</span>}
+        {altitud>0&&<span style={{color:"#5a6a4a"}}> · {altitud}m</span>}
       </div>
     </div>
   );
@@ -216,7 +235,7 @@ const emptyReview = () => ({
   quadresCria:null, criaEstat:null, estatReina:null, cellesReials:null,
   cellesReialsUbicacio:null, anyReina:null,
   varroaData:null, varroaPct:null,
-  tractamentMes:null, tipusTractament:null,
+  tractamentMes:null, tipusTractament:null, nucliSanitari:false,
   quadresBuits:null, agressivitat:null, notes:""
 });
 
@@ -227,6 +246,7 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
   const [fotoViewer,setFotoViewer]=useState(false);
   useEffect(()=>{ if(initial) setF({...emptyReview(),...initial}); },[JSON.stringify(initial)]);
 
+  // Slider nullable
   const NullSlider=({lbl,field,min,max,opts})=>(
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
@@ -240,6 +260,8 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
       {opts&&<div style={{display:"flex",justifyContent:"space-between",marginTop:2}}><span style={{color:"#5a4a2a",fontSize:9}}>{opts[0]}</span><span style={{color:"#5a4a2a",fontSize:9}}>{opts[opts.length-1]}</span></div>}
     </div>
   );
+
+  // Select nullable
   const NullSel=({lbl,field,opts})=>(
     <div style={{marginBottom:12}}>
       <label style={S.label}>{lbl}</label>
@@ -249,10 +271,21 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
       </select>
     </div>
   );
+
+  // Número nullable — usa stepper buttons per evitar problema mòbil amb teclat
   const NullNum=({lbl,field,min,max})=>(
     <div style={{marginBottom:12}}>
       <label style={S.label}>{lbl}</label>
-      <input type="number" min={min} max={max} value={f[field]!=null?f[field]:""} placeholder="—" onChange={e=>set(field,e.target.value===""?null:+e.target.value)} style={{...S.input,color:f[field]==null?"#5a4a2a":"#fff"}}/>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={()=>set(field,f[field]==null?min:Math.max(min,f[field]-1))}
+          style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,200,50,0.2)",borderRadius:6,color:"#fff",width:36,height:36,fontSize:18,cursor:"pointer",flexShrink:0}}>−</button>
+        <div style={{flex:1,textAlign:"center",padding:"8px",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,200,50,0.2)",borderRadius:8,color:f[field]==null?"#5a4a2a":"#fff",fontSize:16,minWidth:50}}>
+          {f[field]!=null?f[field]:"—"}
+        </div>
+        <button onClick={()=>set(field,f[field]==null?min:Math.min(max,f[field]+1))}
+          style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,200,50,0.2)",borderRadius:6,color:"#fff",width:36,height:36,fontSize:18,cursor:"pointer",flexShrink:0}}>+</button>
+        {f[field]!=null&&<button onClick={()=>set(field,null)} style={{background:"none",border:"none",color:"#5a4a2a",cursor:"pointer",fontSize:13,padding:0}}>✕</button>}
+      </div>
     </div>
   );
 
@@ -271,30 +304,31 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
       <div style={{maxHeight:compact?"none":"60vh",overflowY:compact?"visible":"auto",paddingRight:compact?0:4}}>
         {!compact&&<h3 style={{color:"#f5c842",margin:"0 0 14px",fontSize:15}}>Revisio Arna #{arnaNumero}</h3>}
 
-        {/* ORDRE IGUAL QUE LA FITXA */}
-        <div style={{marginBottom:12}}><label style={S.label}>Data revisio (dia/mes/any)</label><input type="date" value={f.date} onChange={e=>set("date",e.target.value)} style={S.input}/></div>
+        <div style={{marginBottom:12}}><label style={S.label}>Data revisio</label><input type="date" value={f.date} onChange={e=>set("date",e.target.value)} style={S.input}/></div>
 
         <NullSlider lbl="Força colònia" field="forcaColonia" min={0} max={4} opts={FORCE}/>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0 8px"}}>
           <NullNum lbl="Quadres mel" field="quadresMel" min={0} max={20}/>
-          <NullNum lbl="Pol·len (0-5)" field="pollen" min={0} max={5}/>
           <NullNum lbl="Quadres abelles" field="quadresAbelles" min={0} max={14}/>
+          <NullNum lbl="Quadres cria" field="quadresCria" min={0} max={14}/>
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 8px"}}>
-          <NullNum lbl="Quadres cria" field="quadresCria" min={0} max={14}/>
           <NullSel lbl="Estat cria" field="criaEstat" opts={["Compacta","Pua","Dispersa"]}/>
+          <NullSlider lbl="Pol·len" field="pollen" min={0} max={5} opts={POLLEN}/>
         </div>
 
         <NullSel lbl="Estat reina" field="estatReina" opts={REINA}/>
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 8px"}}>
-          <NullNum lbl="Cel·les reials (0=cap, >24=moltes)" field="cellesReials" min={0} max={30}/>
-          <NullSel lbl="Ubicació cel·les reials" field="cellesReialsUbicacio" opts={["Als extrems dels quadres","Al mig dels quadres","A un sol quadre"]}/>
+          <NullNum lbl="Cel·les reials" field="cellesReials" min={0} max={30}/>
+          <NullSel lbl="Ubicació cel·les" field="cellesReialsUbicacio" opts={["Als extrems dels quadres","Al mig dels quadres","A un sol quadre"]}/>
         </div>
 
         <NullSel lbl="Any reina (color)" field="anyReina" opts={REICOLOR}/>
+        <NullNum lbl="Quadres buits" field="quadresBuits" min={0} max={14}/>
+        <NullSlider lbl="Agressivitat" field="agressivitat" min={0} max={5} opts={AGRESS}/>
 
         <div style={{background:"rgba(255,50,50,0.05)",border:"1px solid rgba(255,80,80,0.15)",borderRadius:10,padding:12,marginBottom:12}}>
           <p style={{color:"#ff8888",fontSize:11,fontWeight:700,margin:"0 0 10px"}}>VARROA</p>
@@ -303,7 +337,7 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
               <label style={S.label}>Data prova varroa</label>
               <input type="date" value={f.varroaData||""} onChange={e=>set("varroaData",e.target.value||null)} style={{...S.input,color:!f.varroaData?"#5a4a2a":"#fff"}}/>
             </div>
-            <NullSlider lbl="% Varroa" field="varroaPct" min={0} max={3} opts={["0-1%","2%","3%","Mes de 3%"]}/>
+            <NullSlider lbl="% Varroa" field="varroaPct" min={0} max={3} opts={["0-1%","2%","3%",">3%"]}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 8px"}}>
             <div style={{marginBottom:12}}>
@@ -315,10 +349,11 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
             </div>
             <NullSel lbl="Tipus tractament" field="tipusTractament" opts={TRACTA}/>
           </div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginTop:4}}>
+            <input type="checkbox" id="nucli" checked={f.nucliSanitari||false} onChange={e=>set("nucliSanitari",e.target.checked)} style={{width:18,height:18,accentColor:"#f5c842"}}/>
+            <label htmlFor="nucli" style={{color:"#d4a855",fontSize:13,cursor:"pointer"}}>+ Més nucli sanitari</label>
+          </div>
         </div>
-
-        <NullNum lbl="Quadres buits" field="quadresBuits" min={0} max={14}/>
-        <NullSlider lbl="Agressivitat" field="agressivitat" min={0} max={5} opts={AGRESS}/>
 
         <div style={{marginBottom:14}}><label style={S.label}>Notes</label><textarea value={f.notes} onChange={e=>set("notes",e.target.value)} rows={2} style={{...S.input,resize:"vertical"}}/></div>
         <div style={{display:"flex",gap:8}}>
@@ -335,29 +370,26 @@ function AuthScreen({ onAuth }) {
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState(""); const [pwd,setPwd]=useState(""); const [pwd2,setPwd2]=useState("");
   const [err,setErr]=useState(""); const [loading,setLoading]=useState(false); const [ok,setOk]=useState("");
-
   const submit=async()=>{
     setErr(""); setOk(""); setLoading(true);
     if (mode==="login") {
       const {data,error}=await _supa.auth.signInWithPassword({email,password:pwd});
-      if (error) setErr(error.message);
-      else onAuth(data.user);
+      if (error) setErr(error.message); else onAuth(data.user);
     } else {
       if (pwd!==pwd2) { setErr("Les contrasenyes no coincideixen"); setLoading(false); return; }
-      if (pwd.length<6) { setErr("La contrasenya ha de tenir almenys 6 caràcters"); setLoading(false); return; }
+      if (pwd.length<6) { setErr("Mínim 6 caràcters"); setLoading(false); return; }
       const {data,error}=await _supa.auth.signUp({email,password:pwd});
       if (error) setErr(error.message);
       else if (data.user?.identities?.length===0) setErr("Aquest correu ja existeix");
-      else { setOk("Compte creat! Comprova el correu per verificar el compte."); setMode("login"); }
+      else { setOk("Compte creat! Comprova el correu."); setMode("login"); }
     }
     setLoading(false);
   };
-
   return (
     <div style={{...S.page,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{...S.card,maxWidth:400,width:"100%"}}>
         <div style={{textAlign:"center",marginBottom:24}}>
-          <div style={{fontSize:48}}>🍯</div>
+          <div style={{fontSize:48}}>🐝</div>
           <h1 style={{color:"#f5c842",fontSize:22,margin:"8px 0 4px"}}>Abellaire</h1>
           <p style={{color:"#7a6040",fontSize:12,margin:0}}>Gestió Apícola Intel·ligent amb IA</p>
         </div>
@@ -366,7 +398,7 @@ function AuthScreen({ onAuth }) {
           <button onClick={()=>setMode("register")} style={{flex:1,padding:"10px",background:mode==="register"?"rgba(245,200,66,0.15)":"transparent",border:"none",color:mode==="register"?"#f5c842":"#6b5a3a",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>Registrar-se</button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div><label style={S.label}>Correu electrònic</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={S.input} placeholder="correu@exemple.com" onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+          <div><label style={S.label}>Correu</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={S.input} placeholder="correu@exemple.com" onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
           <div><label style={S.label}>Contrasenya</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} style={S.input} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
           {mode==="register"&&<div><label style={S.label}>Repetir contrasenya</label><input type="password" value={pwd2} onChange={e=>setPwd2(e.target.value)} style={S.input} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()}/></div>}
           {err&&<div style={{color:"#ff8888",fontSize:13,padding:"8px 12px",background:"rgba(255,80,80,0.08)",borderRadius:6}}>{err}</div>}
@@ -383,8 +415,10 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
   const [explotacions,setExplotacions]=useState([]);
   const [loading,setLoading]=useState(true);
   const [mode,setMode]=useState(null);
+  const [editEx,setEditEx]=useState(null);
   const [nom,setNom]=useState(""); const [rega,setRega]=useState(""); const [pwd,setPwd]=useState("");
   const [err,setErr]=useState(""); const [saving,setSaving]=useState(false);
+  const [confirmDel,setConfirmDel]=useState(null);
 
   useEffect(()=>{ loadExplotacions(); },[]);
 
@@ -405,6 +439,23 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
     setMode(null); setNom(""); setRega(""); setPwd(""); setSaving(false);
   };
 
+  const modificar=async()=>{
+    if(!nom.trim()){setErr("El nom no pot estar buit");return;}
+    setSaving(true); setErr("");
+    const upd = {nom};
+    if(pwd.trim()) upd.password_hash = await hashPassword(pwd);
+    const {error}=await _supa.from("explotacions").update(upd).eq("id",editEx.id);
+    if(error){setErr(error.message);setSaving(false);return;}
+    await loadExplotacions();
+    setMode(null); setEditEx(null); setNom(""); setPwd(""); setSaving(false);
+  };
+
+  const eliminar=async(exId)=>{
+    await _supa.from("membres_explotacio").delete().eq("explotacio_id",exId).eq("usuari_id",usuari.id);
+    await loadExplotacions();
+    setConfirmDel(null);
+  };
+
   const unirse=async()=>{
     if(!rega.trim()||!pwd.trim()){setErr("Omple tots els camps");return;}
     setSaving(true); setErr("");
@@ -420,26 +471,39 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
 
   return (
     <div style={{...S.page,padding:"0 0 40px"}}>
+      {confirmDel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
+          <div style={{...S.card,background:"#140f02",maxWidth:400,width:"100%",textAlign:"center"}}>
+            <h4 style={{color:"#ff8888",margin:"0 0 10px"}}>Eliminar explotació?</h4>
+            <p style={{fontSize:13,color:"#ccc",margin:"0 0 20px"}}>Deixaràs de tenir accés a <strong>{confirmDel.nom}</strong>. Si ets l'únic membre, es pot perdre l'accés permanentment.</p>
+            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+              <button onClick={()=>eliminar(confirmDel.id)} style={S.btnRed}>Eliminar</button>
+              <button onClick={()=>setConfirmDel(null)} style={S.btnGhost}>Cancel·lar</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{maxWidth:600,margin:"0 auto",padding:"0 16px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 0 14px",borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
-          <div><h1 style={{color:"#f5c842",fontSize:20,margin:0}}>🍯 Abellaire</h1><p style={{color:"#7a6040",fontSize:11,margin:"2px 0 0"}}>{usuari.email}</p></div>
+          <div><h1 style={{color:"#f5c842",fontSize:20,margin:0}}>🐝 Abellaire</h1><p style={{color:"#7a6040",fontSize:11,margin:"2px 0 0"}}>{usuari.email}</p></div>
           <button onClick={onLogout} style={{...S.btnGhost,fontSize:12,padding:"6px 12px"}}>Tancar sessió</button>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"20px 0 16px"}}>
-          <button onClick={()=>{setMode("crear");setErr("");}} style={{...S.btnGold,padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+          <button onClick={()=>{setMode("crear");setErr("");setNom("");setRega("");setPwd("");}} style={{...S.btnGold,padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
             <span style={{fontSize:24}}>➕</span><span style={{fontWeight:700}}>Nova explotació</span><span style={{fontSize:11,opacity:0.7}}>Crear amb REGA</span>
           </button>
-          <button onClick={()=>{setMode("unirse");setErr("");}} style={{...S.btnBlue,padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+          <button onClick={()=>{setMode("unirse");setErr("");setRega("");setPwd("");}} style={{...S.btnBlue,padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
             <span style={{fontSize:24}}>🔑</span><span style={{fontWeight:700}}>Unir-se</span><span style={{fontSize:11,opacity:0.7}}>REGA + contrasenya</span>
           </button>
         </div>
+
         {mode==="crear"&&(
           <div style={{...S.card,marginBottom:16}}>
             <h3 style={{color:"#f5c842",margin:"0 0 14px",fontSize:15}}>Nova Explotació</h3>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div><label style={S.label}>Nom</label><input value={nom} onChange={e=>setNom(e.target.value)} style={S.input} placeholder="Cal Mel de la Muntanya"/></div>
               <div><label style={S.label}>REGA</label><input value={rega} onChange={e=>setRega(e.target.value.toUpperCase())} style={S.input} placeholder="ES1216545645216547"/></div>
-              <div><label style={S.label}>Contrasenya d'accés</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} style={S.input} placeholder="Per compartir amb altres"/></div>
+              <div><label style={S.label}>Contrasenya d'accés</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} style={S.input}/></div>
               {err&&<div style={{color:"#ff8888",fontSize:13}}>{err}</div>}
               <div style={{display:"flex",gap:8}}>
                 <button onClick={crear} disabled={saving} style={{...S.btnPri,flex:1}}>{saving?"Creant...":"Crear"}</button>
@@ -448,6 +512,22 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
             </div>
           </div>
         )}
+
+        {mode==="editar"&&editEx&&(
+          <div style={{...S.card,marginBottom:16}}>
+            <h3 style={{color:"#f5c842",margin:"0 0 14px",fontSize:15}}>Modificar Explotació</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div><label style={S.label}>Nom</label><input value={nom} onChange={e=>setNom(e.target.value)} style={S.input}/></div>
+              <div><label style={S.label}>Nova contrasenya (opcional)</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} style={S.input} placeholder="Deixa buit per no canviar"/></div>
+              {err&&<div style={{color:"#ff8888",fontSize:13}}>{err}</div>}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={modificar} disabled={saving} style={{...S.btnPri,flex:1}}>{saving?"Guardant...":"Guardar"}</button>
+                <button onClick={()=>{setMode(null);setEditEx(null);}} style={S.btnGhost}>Cancel·lar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {mode==="unirse"&&(
           <div style={{...S.card,marginBottom:16}}>
             <h3 style={{color:"#f5c842",margin:"0 0 14px",fontSize:15}}>Unir-se a una Explotació</h3>
@@ -462,13 +542,21 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
             </div>
           </div>
         )}
+
         <h3 style={{color:"#d4a855",fontSize:13,fontWeight:700,letterSpacing:1,margin:"20px 0 10px"}}>LES MEVES EXPLOTACIONS ({explotacions.length})</h3>
         {loading?<div style={{color:"#7a6040",textAlign:"center",padding:20}}>Carregant...</div>:(
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {explotacions.map(e=>(
-              <div key={e.explotacio_id} onClick={()=>onSelect(e.explotacions)} style={{...S.card,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div><div style={{fontSize:17,fontWeight:700,color:"#f5c842"}}>🏭 {e.explotacions?.nom}</div><div style={{fontSize:12,color:"#7a6040",marginTop:2}}>REGA: {e.explotacions?.rega} · {e.rol}</div></div>
-                <span style={{color:"#f5c842",fontSize:20}}>›</span>
+              <div key={e.explotacio_id} style={{...S.card,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div onClick={()=>onSelect(e.explotacions)} style={{cursor:"pointer",flex:1}}>
+                  <div style={{fontSize:17,fontWeight:700,color:"#f5c842"}}>🏭 {e.explotacions?.nom}</div>
+                  <div style={{fontSize:12,color:"#7a6040",marginTop:2}}>REGA: {e.explotacions?.rega} · {e.rol}</div>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  {e.rol==="admin"&&<button onClick={()=>{setEditEx(e.explotacions);setNom(e.explotacions.nom);setPwd("");setErr("");setMode("editar");}} style={{...S.btnGhost,padding:"4px 8px",fontSize:12}}>✏️</button>}
+                  <button onClick={()=>setConfirmDel({id:e.explotacio_id,nom:e.explotacions?.nom})} style={{...S.btnRed,padding:"4px 8px",fontSize:12}}>✕</button>
+                  <span onClick={()=>onSelect(e.explotacions)} style={{color:"#f5c842",fontSize:20,cursor:"pointer"}}>›</span>
+                </div>
               </div>
             ))}
             {explotacions.length===0&&<div style={{textAlign:"center",padding:30,color:"#5a4a2a"}}>No pertanys a cap explotació.</div>}
@@ -480,11 +568,11 @@ function ExplotacionsScreen({ usuari, onSelect, onLogout }) {
 }
 
 // ─── BULK PROCESSOR ───────────────────────────────────────────────────────────
-function BulkProcessor({ apiariArnes, onComplete, onClose }) {
+function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
   const [items,setItems]=useState([]); const [phase,setPhase]=useState("select"); const [currentIdx,setCurrentIdx]=useState(0);
   const fileInputRef = useRef(null); const cameraInputRef = useRef(null);
 
-  const addFiles=files=>{ const news=Array.from(files).map(f=>({id:"img_"+Date.now()+"_"+Math.random().toString(36).slice(2),file:f,preview:URL.createObjectURL(f),status:"pendent",result:null,formData:emptyReview(),mode:"auto",arnaId:null,arnaNum:null})); setItems(p=>[...p,...news]); };
+  const addFiles=files=>{ const news=Array.from(files).map(f=>({id:"img_"+Date.now()+"_"+Math.random().toString(36).slice(2),file:f,preview:URL.createObjectURL(f),status:"pendent",result:null,formData:emptyReview(),arnaId:null,arnaNum:null,warning:null})); setItems(p=>[...p,...news]); };
   const removeItem=id=>setItems(p=>p.filter(i=>i.id!==id));
   const updateItem=(id,ch)=>setItems(p=>p.map(it=>it.id===id?{...it,...ch}:it));
 
@@ -493,16 +581,37 @@ function BulkProcessor({ apiariArnes, onComplete, onClose }) {
     for(let i=0;i<items.length;i++){
       setCurrentIdx(i); setItems(p=>p.map((it,idx)=>idx===i?{...it,status:"analitzant"}:it));
       try {
-        const b64=await toBase64(items[i].file); const result=await readFitxaAI(b64,items[i].file.type);
-        if(result){const matched=result.numero?apiariArnes.find(a=>a.numero===result.numero):null;const{numero,...rest}=result;setItems(p=>p.map((it,idx)=>idx===i?{...it,status:"fet",result,formData:{...emptyReview(),...rest},arnaId:matched?.id||null,arnaNum:numero||null,mode:matched?"revision":"nova"}:it));}
-        else setItems(p=>p.map((it,idx)=>idx===i?{...it,status:"error"}:it));
+        const b64=await toBase64(items[i].file);
+        const result=await readFitxaAI(b64,items[i].file.type);
+        if(result){
+          // Detecta arna
+          const matched = result.numero ? apiariArnes.find(a=>a.numero===result.numero) : null;
+          const {numero,...rest}=result;
+
+          // Detecta duplicat per data
+          let warning = null;
+          if(matched && result.date) {
+            const dup = allRevisions.find(r=>r.arna_id===matched.id && r.date===result.date);
+            if(dup) warning = "⚠️ Ja hi ha una revisió d'aquesta data per l'Arna #"+numero;
+          }
+
+          setItems(p=>p.map((it,idx)=>idx===i?{
+            ...it, status:"fet", result,
+            formData:{...emptyReview(),...rest,date:result.date},
+            arnaId:matched?.id||null, arnaNum:numero||null, warning
+          }:it));
+        } else {
+          setItems(p=>p.map((it,idx)=>idx===i?{...it,status:"error"}:it));
+        }
       } catch(_){ setItems(p=>p.map((it,idx)=>idx===i?{...it,status:"error"}:it)); }
     }
     setPhase("review");
   };
 
-  const readyCount=items.filter(it=>(it.status==="fet"||it.status==="error")&&it.mode!=="skip"&&(it.arnaId||(it.mode==="nova"&&it.arnaNum))).length;
-  const saveAll=()=>onComplete(items.filter(it=>(it.status==="fet"||it.status==="error")&&it.mode!=="skip"&&(it.arnaId||(it.mode==="nova"&&it.arnaNum))));
+  // Només guarda les que tenen arna assignada i no estan marcades com skip
+  const readyItems = items.filter(it=>(it.status==="fet"||it.status==="error") && !it.skip && (it.arnaId||(it.arnaNum)));
+  const saveAll=()=>onComplete(readyItems);
+
   const pct=items.length?Math.round(items.filter(i=>i.status==="fet"||i.status==="error").length/items.length*100):0;
 
   if(phase==="select") return (
@@ -510,36 +619,38 @@ function BulkProcessor({ apiariArnes, onComplete, onClose }) {
       <div style={{maxWidth:700,margin:"0 auto"}}>
         <div style={{padding:"18px 0 14px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#f5c842",cursor:"pointer",fontSize:22,padding:0}}>←</button>
-          <div><h2 style={{margin:0,color:"#f5c842",fontSize:19}}>Analitzar fitxes</h2><p style={{margin:0,color:"#7a6040",fontSize:11}}>La IA llegira cada fitxa automaticament</p></div>
+          <div><h2 style={{margin:0,color:"#f5c842",fontSize:19}}>Analitzar fitxes</h2><p style={{margin:0,color:"#7a6040",fontSize:11}}>Puja totes les fotos de cop — la IA les ordenarà</p></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"20px 0 16px"}}>
-          {/* Càmera — botó manual per compatibilitat Firefox */}
           <button onClick={()=>cameraInputRef.current?.click()} style={{...S.btnBlue,padding:"18px 12px",textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:6,borderRadius:8}}>
-            <span style={{fontSize:36}}>📷</span><span style={{fontWeight:700,fontSize:15}}>Fer foto</span><span style={{fontSize:12,opacity:0.7}}>Camera directa</span>
+            <span style={{fontSize:36}}>📷</span><span style={{fontWeight:700,fontSize:15}}>Fer foto</span>
           </button>
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={e=>{if(e.target.files?.length)addFiles(e.target.files);e.target.value="";}} style={{display:"none"}}/>
-
-          {/* Galeria */}
           <button onClick={()=>fileInputRef.current?.click()} style={{...S.btnGold,padding:"18px 12px",textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:6,borderRadius:8}}>
-            <span style={{fontSize:36}}>🖼️</span><span style={{fontWeight:700,fontSize:15}}>Galeria</span><span style={{fontSize:12,opacity:0.7}}>Selecciona multiples</span>
+            <span style={{fontSize:36}}>🖼️</span><span style={{fontWeight:700,fontSize:15}}>Galeria</span><span style={{fontSize:12,opacity:0.7}}>Selecciona múltiples</span>
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={e=>{if(e.target.files?.length)addFiles(e.target.files);e.target.value="";}} style={{display:"none"}}/>
         </div>
         {items.length>0&&(
           <div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(88px,1fr))",gap:8,marginBottom:16}}>
+            <div style={{...S.card,marginBottom:12,padding:10,fontSize:12,color:"#a8d8a8"}}>
+              💡 {items.length} fotos seleccionades. La IA detectarà l'arna i la data de cada fitxa automàticament.
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:8,marginBottom:16}}>
               {items.map((it,i)=>(
                 <div key={it.id} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"1",background:"#1a1200"}}>
                   <img src={it.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                  <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",padding:"2px 4px",fontSize:10,color:"#f5c842",textAlign:"center"}}>Foto {i+1}</div>
-                  <button onClick={()=>removeItem(it.id)} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.75)",border:"none",borderRadius:"50%",color:"#fff",width:22,height:22,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
+                  <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",padding:"2px 4px",fontSize:9,color:"#f5c842",textAlign:"center"}}>#{i+1}</div>
+                  <button onClick={()=>removeItem(it.id)} style={{position:"absolute",top:2,right:2,background:"rgba(0,0,0,0.75)",border:"none",borderRadius:"50%",color:"#fff",width:18,height:18,cursor:"pointer",fontSize:10,padding:0}}>✕</button>
                 </div>
               ))}
             </div>
-            <button onClick={processAll} style={{...S.btnPri,width:"100%",fontSize:15,padding:"14px"}}>Analitzar {items.length} {items.length===1?"foto":"fotos"} amb IA</button>
+            <button onClick={processAll} style={{...S.btnPri,width:"100%",fontSize:15,padding:"14px"}}>
+              Analitzar {items.length} {items.length===1?"foto":"fotos"} amb IA
+            </button>
           </div>
         )}
-        {items.length===0&&<div style={{textAlign:"center",padding:"50px 20px",color:"#5a4a2a"}}><div style={{fontSize:52,marginBottom:12}}>📷</div><p style={{fontSize:14,color:"#7a6040"}}>Afegeix fotos de les fitxes</p></div>}
+        {items.length===0&&<div style={{textAlign:"center",padding:"50px 20px",color:"#5a4a2a"}}><div style={{fontSize:52,marginBottom:12}}>📷</div><p style={{fontSize:14,color:"#7a6040"}}>Pots seleccionar 50+ fotos d'un cop</p></div>}
       </div>
     </div>
   );
@@ -547,63 +658,85 @@ function BulkProcessor({ apiariArnes, onComplete, onClose }) {
   if(phase==="processing") return (
     <div style={{...S.page,position:"fixed",inset:0,zIndex:1000,overflowY:"auto",padding:"0 14px 40px"}}>
       <div style={{maxWidth:700,margin:"0 auto"}}>
-        <div style={{padding:"18px 0 14px",borderBottom:"1px solid rgba(255,200,50,0.08)"}}><h2 style={{margin:0,color:"#f5c842",fontSize:19}}>Analitzant...</h2><p style={{margin:"4px 0 0",color:"#7a6040",fontSize:11}}>Foto {Math.min(currentIdx+1,items.length)} de {items.length}</p></div>
-        <div style={{background:"rgba(255,255,255,0.05)",borderRadius:8,height:8,margin:"16px 0",overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#f5c842,#d4a020)",borderRadius:8,width:pct+"%",transition:"width 0.5s"}}/></div>
-        {items.map((it,i)=>(
-          <div key={it.id} style={{...S.card,marginBottom:8,display:"flex",alignItems:"center",gap:12,padding:12}}>
-            <img src={it.preview} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8,flexShrink:0}}/>
-            <div style={{flex:1}}>
-              <div style={{color:"#f5e8a0",fontSize:13,fontWeight:600}}>Foto {i+1}</div>
-              <div style={{fontSize:12,marginTop:2,color:it.status==="fet"?"#80c880":it.status==="error"?"#ff8888":it.status==="analitzant"?"#f5c842":"#5a4a2a"}}>{it.status==="pendent"?"Pendent":it.status==="analitzant"?"Analitzant...":it.status==="fet"?"Llegida correctament":"No s'ha pogut llegir — omple manualment"}</div>
-              {it.status==="fet"&&it.result?.numero&&<div style={{color:"#f5c842",fontSize:11}}>Arna #{it.result.numero}</div>}
+        <div style={{padding:"18px 0 14px",borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
+          <h2 style={{margin:0,color:"#f5c842",fontSize:19}}>Analitzant {items.length} fitxes...</h2>
+          <p style={{margin:"4px 0 0",color:"#7a6040",fontSize:11}}>Foto {Math.min(currentIdx+1,items.length)} de {items.length}</p>
+        </div>
+        <div style={{background:"rgba(255,255,255,0.05)",borderRadius:8,height:8,margin:"16px 0",overflow:"hidden"}}>
+          <div style={{height:"100%",background:"linear-gradient(90deg,#f5c842,#d4a020)",borderRadius:8,width:pct+"%",transition:"width 0.3s"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:8}}>
+          {items.map((it,i)=>(
+            <div key={it.id} style={{position:"relative",borderRadius:8,overflow:"hidden",aspectRatio:"1",background:"#1a1200",opacity:it.status==="pendent"?0.4:1}}>
+              <img src={it.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)"}}>
+                <span style={{fontSize:20}}>{it.status==="pendent"?"⏳":it.status==="analitzant"?"🔍":it.status==="fet"?"✅":"❌"}</span>
+              </div>
+              {it.status==="fet"&&it.result?.numero&&<div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",fontSize:9,color:"#f5c842",textAlign:"center",padding:"1px 2px"}}>#{it.result.numero}</div>}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
 
+  // FASE REVIEW — agrupat per arna, ordenat per data
+  const byArna = {};
+  items.forEach(it=>{
+    const key = it.arnaNum || "desconeguda";
+    if(!byArna[key]) byArna[key]=[];
+    byArna[key].push(it);
+  });
+  Object.values(byArna).forEach(g=>g.sort((a,b)=>(a.formData.date||"").localeCompare(b.formData.date||"")));
+
   return (
     <div style={{...S.page,position:"fixed",inset:0,zIndex:1000,overflowY:"auto",padding:"0 14px 40px"}}>
       <div style={{maxWidth:800,margin:"0 auto"}}>
-        <div style={{padding:"18px 0 14px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
+        <div style={{padding:"18px 0 14px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,200,50,0.08)",position:"sticky",top:0,background:"#0c0800",zIndex:10}}>
           <button onClick={()=>setPhase("select")} style={{background:"none",border:"none",color:"#f5c842",cursor:"pointer",fontSize:22,padding:0}}>←</button>
-          <div style={{flex:1}}><h2 style={{margin:0,color:"#f5c842",fontSize:19}}>Repassa els resultats</h2><p style={{margin:0,color:"#7a6040",fontSize:11}}>{readyCount} entrades a guardar</p></div>
-          <button onClick={saveAll} disabled={readyCount===0} style={{...S.btnPri,opacity:readyCount===0?0.4:1}}>Guardar</button>
+          <div style={{flex:1}}>
+            <h2 style={{margin:0,color:"#f5c842",fontSize:19}}>Repassa els resultats</h2>
+            <p style={{margin:0,color:"#7a6040",fontSize:11}}>{readyItems.length} entrades a guardar · {items.filter(i=>i.status==="error").length} errors · {items.filter(i=>i.skip).length} saltades</p>
+          </div>
+          <button onClick={saveAll} disabled={readyItems.length===0} style={{...S.btnPri,opacity:readyItems.length===0?0.4:1}}>Guardar tot</button>
         </div>
-        {items.map((it,i)=>(
-          <div key={it.id} style={{...S.card,marginTop:14}}>
-            <div style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
-              <div style={{flex:1}}>
-                <div style={{color:"#f5e8a0",fontWeight:700,fontSize:14}}>Foto {i+1}</div>
-                {it.status==="error"?<div style={{color:"#ff8888",fontSize:12}}>No s'ha pogut llegir — omple manualment</div>:<div style={{color:"#80c880",fontSize:12}}>Llegida{it.result?.numero?" — Arna #"+it.result.numero:""}</div>}
-              </div>
-              <select value={it.mode} onChange={e=>updateItem(it.id,{mode:e.target.value,arnaId:e.target.value==="nova"?null:it.arnaId})} style={{...S.input,width:"auto",fontSize:11,padding:"6px 8px",background:"#1a1400",flexShrink:0}}>
-                <option value="revision">Revisio</option><option value="nova">Nova arna</option><option value="skip">Saltar</option>
-              </select>
+
+        {Object.entries(byArna).sort(([a],[b])=>+a-+b).map(([arnaNum,grup])=>(
+          <div key={arnaNum} style={{marginTop:20}}>
+            <div style={{color:"#f5c842",fontWeight:700,fontSize:16,marginBottom:10,padding:"8px 0",borderBottom:"1px solid rgba(255,200,50,0.15)"}}>
+              🐝 Arna #{arnaNum} — {grup.length} {grup.length===1?"revisió":"revisions"}
             </div>
-            {(it.status==="fet"||it.status==="error")&&it.mode!=="skip"&&(
-              <div>
-                {it.mode==="revision"?(
-                  <div style={{marginBottom:12}}><label style={S.label}>Assignar a l'arna</label>
-                    <select value={it.arnaId||""} onChange={e=>updateItem(it.id,{arnaId:e.target.value||null})} style={{...S.input,background:"#1a1400"}}>
-                      <option value="">-- Selecciona arna --</option>
-                      {apiariArnes.sort((a,b)=>a.numero-b.numero).map(a=><option key={a.id} value={a.id}>Arna #{a.numero}</option>)}
-                    </select>
+            {grup.map((it,i)=>(
+              <div key={it.id} style={{...S.card,marginBottom:10,opacity:it.skip?0.4:1}}>
+                <div style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}}>
+                  <img src={it.preview} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:8,flexShrink:0,cursor:"pointer"}} onClick={()=>updateItem(it.id,{_showViewer:!it._showViewer})}/>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{color:it.status==="error"?"#ff8888":"#80c880",fontSize:12}}>
+                        {it.status==="error"?"❌ No llegida":"✅ "+fmtDate(it.formData.date)}
+                      </span>
+                      <button onClick={()=>updateItem(it.id,{skip:!it.skip})} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>{it.skip?"Incloure":"Saltar"}</button>
+                    </div>
+                    {it.warning&&<div style={{color:"#ff9944",fontSize:11,marginTop:4}}>{it.warning}</div>}
+                    {!it.arnaId&&it.arnaNum&&<div style={{color:"#88bbff",fontSize:11,marginTop:2}}>Nova arna #{it.arnaNum} (es crearà)</div>}
+                    {!it.arnaNum&&<div style={{color:"#ff8888",fontSize:11,marginTop:2}}>Número d'arna no detectat</div>}
                   </div>
-                ):(
-                  <div style={{marginBottom:12}}><label style={S.label}>Numero nova arna</label><input type="number" value={it.arnaNum||""} onChange={e=>updateItem(it.id,{arnaNum:+e.target.value})} style={S.input} placeholder="Ex: 15"/></div>
+                </div>
+                {it._showViewer&&<FotoViewer url={it.preview} onClose={()=>updateItem(it.id,{_showViewer:false})}/>}
+                {!it.skip&&(
+                  <details><summary style={{color:"#d4a855",fontSize:12,cursor:"pointer",fontWeight:600,padding:"4px 0"}}>Revisar i editar dades</summary>
+                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid rgba(255,200,50,0.08)"}}>
+                      <ReviewForm arnaNumero={it.arnaNum} initial={it.formData} photoUrl={it.preview} onSave={fd=>updateItem(it.id,{formData:fd})} onCancel={null} loading={false} compact={true}/>
+                    </div>
+                  </details>
                 )}
-                <details open><summary style={{color:"#d4a855",fontSize:12,cursor:"pointer",fontWeight:600,padding:"6px 0"}}>Revisar i editar les dades</summary>
-                  <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid rgba(255,200,50,0.08)"}}>
-                    <ReviewForm arnaNumero={it.arnaNum||(apiariArnes.find(a=>a.id===it.arnaId)?.numero)} initial={it.formData} photoUrl={it.preview} onSave={fd=>updateItem(it.id,{formData:fd})} onCancel={null} loading={false} compact={true}/>
-                  </div>
-                </details>
               </div>
-            )}
+            ))}
           </div>
         ))}
-        <button onClick={saveAll} disabled={readyCount===0} style={{...S.btnPri,width:"100%",marginTop:16,fontSize:15,padding:"14px",opacity:readyCount===0?0.4:1}}>Guardar {readyCount} {readyCount===1?"entrada":"entrades"}</button>
+        <button onClick={saveAll} disabled={readyItems.length===0} style={{...S.btnPri,width:"100%",marginTop:16,fontSize:15,padding:"14px",opacity:readyItems.length===0?0.4:1}}>
+          Guardar {readyItems.length} {readyItems.length===1?"entrada":"entrades"}
+        </button>
       </div>
     </div>
   );
@@ -619,14 +752,58 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
   const [saveLoad,setSaveLoad]=useState(false);
   const [photoUrl,setPhotoUrl]=useState(null);
   const [recs,setRecs]=useState(""); const [recLoad,setRecLoad]=useState(false);
+  const [warnMsg,setWarnMsg]=useState(null);
+  const [pendingResult,setPendingResult]=useState(null);
   const fileInputRef=useRef(null); const cameraInputRef=useRef(null);
 
   const sorted=[...revisions].sort((a,b)=>a.date.localeCompare(b.date));
   const last=sorted[sorted.length-1];
   const chartData=sorted.map(r=>({d:fmtDate(r.date),forca:r.forcaColonia,mel:r.quadresMel,abelles:r.quadresAbelles,cria:r.quadresCria,varroa:r.varroaPct}));
+  const qInfo = qualitat(sorted);
 
-  const handlePhoto=async file=>{ if(!file) return; setAiLoad(true); setPhotoUrl(URL.createObjectURL(file)); const b64=await toBase64(file); const result=await readFitxaAI(b64,file.type); if(result){const{numero,...rest}=result;setAiPrefill({...emptyReview(),...rest});}else setAiPrefill(null); setShowForm(true); setEditingRev(null); setAiLoad(false); };
-  const handleSave=async data=>{ setSaveLoad(true); if(editingRev?.id){await onUpdateRevision({...data,id:editingRev.id,arnaId:arna.id});}else{await onAddRevision({...data,arnaId:arna.id,id:"r_"+Date.now()});} setShowForm(false); setEditingRev(null); setAiPrefill(null); setPhotoUrl(null); setSaveLoad(false); };
+  const handlePhoto=async file=>{ 
+    if(!file) return; 
+    setAiLoad(true); 
+    setPhotoUrl(URL.createObjectURL(file)); 
+    const b64=await toBase64(file); 
+    const result=await readFitxaAI(b64,file.type); 
+    setAiLoad(false);
+    if(!result){ setAiPrefill(null); setShowForm(true); return; }
+
+    // Comprova si l'arna detectada és diferent
+    if(result.numero && result.numero !== arna.numero) {
+      setWarnMsg(`⚠️ La IA ha detectat l'Arna #${result.numero}, però estàs a l'Arna #${arna.numero}. Vols continuar igualment?`);
+      setPendingResult(result);
+      return;
+    }
+
+    // Comprova duplicat de data
+    const dupDate = result.date && revisions.find(r=>r.date===result.date);
+    if(dupDate) {
+      setWarnMsg(`⚠️ Ja hi ha una revisió del ${fmtDate(result.date)} per aquesta arna. Vols sobreescriure-la o afegir-la igualment?`);
+      setPendingResult(result);
+      return;
+    }
+
+    const{numero,...rest}=result;
+    setAiPrefill({...emptyReview(),...rest}); 
+    setShowForm(true); 
+  };
+
+  const confirmPhoto=()=>{ 
+    if(!pendingResult) return;
+    const{numero,...rest}=pendingResult;
+    setAiPrefill({...emptyReview(),...rest}); 
+    setShowForm(true); 
+    setWarnMsg(null); setPendingResult(null); 
+  };
+
+  const handleSave=async data=>{ 
+    setSaveLoad(true); 
+    if(editingRev?.id) await onUpdateRevision({...data,id:editingRev.id,arnaId:arna.id});
+    else await onAddRevision({...data,arnaId:arna.id}); 
+    setShowForm(false); setEditingRev(null); setAiPrefill(null); setPhotoUrl(null); setSaveLoad(false); 
+  };
   const handleEdit=rev=>{ setEditingRev(rev); setAiPrefill(null); setPhotoUrl(null); setShowForm(true); };
   const demanarRecs=async()=>{ setRecLoad(true); const text=await getRecomanacions(last); setRecs(text); setRecLoad(false); };
 
@@ -635,16 +812,31 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
 
   return (
     <div style={S.page}>
+      {/* Avís de confirmació */}
+      {warnMsg&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...S.card,maxWidth:400,width:"100%"}}>
+            <p style={{color:"#ff9944",fontSize:14,margin:"0 0 16px"}}>{warnMsg}</p>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={confirmPhoto} style={{...S.btnPri,flex:1}}>Continuar igualment</button>
+              <button onClick={()=>{setWarnMsg(null);setPendingResult(null);setPhotoUrl(null);}} style={S.btnGhost}>Cancel·lar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{maxWidth:700,margin:"0 auto",padding:"0 14px 40px"}}>
         <div style={{padding:"18px 0 14px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
           <button onClick={onBack} style={{background:"none",border:"none",color:"#f5c842",cursor:"pointer",fontSize:22,padding:0}}>←</button>
           <div style={{flex:1}}>
-            <h2 style={{margin:0,color:"#f5c842",fontSize:20}}>Arna #{arna.numero}</h2>
-            <p style={{margin:0,color:"#7a6040",fontSize:11}}>
-              {revisions.length} revisions
-              {last&&<> · Reina: <span style={{color:"#e6decb"}}>{valOr(last.estatReina,REINA)}</span></>}
-              {last&&<> · Primera revisió: <span style={{color:"#e6decb"}}>{fmtDate(sorted[0]?.date)}</span></>}
-            </p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <h2 style={{margin:0,color:"#f5c842",fontSize:20}}>Arna #{arna.numero}</h2>
+              {qInfo&&<span title={qInfo.factors.join("\n")} style={{fontSize:20,cursor:"help"}}>{qInfo.emoji}</span>}
+            </div>
+            {qInfo&&<p style={{margin:"2px 0 0",color:qInfo.color,fontSize:11}}>{qInfo.nivell} ({qInfo.score}/100)</p>}
+            {last&&<p style={{margin:"1px 0 0",color:"#7a6040",fontSize:10}}>
+              Reina: {valOr(last.estatReina,REINA)} · Primera revisió: {fmtDate(sorted[0]?.date)}
+            </p>}
           </div>
         </div>
 
@@ -674,6 +866,18 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
 
             {tab==="resum"&&(<div>{last?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {qInfo&&(
+                  <div style={{...S.card,border:"1px solid "+qInfo.color+"44",background:qInfo.color+"08"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{fontSize:14,fontWeight:700,color:qInfo.color}}>{qInfo.emoji} {qInfo.nivell}</span>
+                      <span style={{fontSize:20,fontWeight:700,color:qInfo.color}}>{qInfo.score}/100</span>
+                    </div>
+                    <div style={{background:"rgba(0,0,0,0.2)",borderRadius:8,height:8,overflow:"hidden"}}>
+                      <div style={{height:"100%",background:qInfo.color,width:qInfo.score+"%",borderRadius:8,transition:"width 0.5s"}}/>
+                    </div>
+                    <div style={{marginTop:6,fontSize:11,color:"#aaa"}}>{qInfo.factors.join(" · ")}</div>
+                  </div>
+                )}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   <div style={S.card}><div style={{fontSize:11,color:"#7a6040"}}>FORÇA</div><div style={{fontSize:18,fontWeight:700,color:"#f5c842",marginTop:2}}>{valOr(last.forcaColonia,FORCE)}</div></div>
                   <div style={S.card}><div style={{fontSize:11,color:"#7a6040"}}>REINA</div><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{valOr(last.estatReina,REINA)}</div><div style={{fontSize:10,color:"#aaa",marginTop:2}}>Any: {valOr(last.anyReina,REICOLOR)}</div></div>
@@ -685,12 +889,15 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
                       <div key={l} style={{background:"rgba(0,0,0,0.15)",padding:8,borderRadius:6}}><div style={{fontSize:18}}>{e}</div><div style={{fontSize:14,fontWeight:700,color:v!=null?"#fff":"#5a4a2a"}}>{v!=null?v:"—"}</div><div style={{fontSize:9,color:"#7a6040"}}>{l}</div></div>
                     ))}
                   </div>
-                  <div style={{marginTop:8,fontSize:12,color:"#aaa"}}>Cria: <span style={{color:"#fff"}}>{last.criaEstat||"—"}</span> · Cel·les Reials: <span style={{color:"#fff"}}>{last.cellesReials!=null?last.cellesReials+(last.cellesReials>24?" (>24)":""):"—"}</span>{last.cellesReialsUbicacio&&<span style={{color:"#aaa"}}> — {last.cellesReialsUbicacio}</span>}</div>
+                  <div style={{marginTop:8,fontSize:12,color:"#aaa"}}>
+                    Cria: <span style={{color:"#fff"}}>{last.criaEstat||"—"}</span> · Pol·len: <span style={{color:"#fff"}}>{last.pollen!=null?POLLEN[last.pollen]:"—"}</span>
+                    {last.cellesReials!=null&&<> · Cel·les: <span style={{color:"#fff"}}>{last.cellesReials}{last.cellesReialsUbicacio?" ("+last.cellesReialsUbicacio+")":""}</span></>}
+                  </div>
                 </div>
                 <div style={{...S.card,border:"1px solid rgba(255,100,100,0.15)",background:"rgba(255,50,50,0.02)"}}>
                   <div style={{fontSize:12,color:"#ff8888",fontWeight:700,marginBottom:4}}>CONTROL SANITARI</div>
-                  <div style={{fontSize:13}}>Varroa: <span style={{fontWeight:700,color:"#fff"}}>{last.varroaPct!=null?["0-1%","2%","3%","Més de 3%"][last.varroaPct]:"—"}</span>{last.varroaData&&<span style={{fontSize:11,color:"#7a6040"}}> ({fmtDate(last.varroaData)})</span>}</div>
-                  <div style={{fontSize:13,marginTop:2}}>Tractament: <span style={{fontWeight:600,color:"#fff"}}>{last.tipusTractament!=null?TRACTA[last.tipusTractament]:"—"}</span>{last.tractamentMes!=null&&<span style={{fontSize:11,color:"#7a6040"}}> ({MONTHS[last.tractamentMes]})</span>}</div>
+                  <div style={{fontSize:13}}>Varroa: <span style={{fontWeight:700,color:"#fff"}}>{last.varroaPct!=null?["0-1%","2%","3%",">3%"][last.varroaPct]:"—"}</span>{last.varroaData&&<span style={{fontSize:11,color:"#7a6040"}}> ({fmtDate(last.varroaData)})</span>}</div>
+                  <div style={{fontSize:13,marginTop:2}}>Tractament: <span style={{fontWeight:600,color:"#fff"}}>{last.tipusTractament!=null?TRACTA[last.tipusTractament]:"—"}</span>{last.nucliSanitari&&<span style={{color:"#88bbff"}}> + Nucli sanitari</span>}{last.tractamentMes!=null&&<span style={{fontSize:11,color:"#7a6040"}}> ({MONTHS[last.tractamentMes]})</span>}</div>
                 </div>
                 {last.notes&&<div style={{...S.card,fontStyle:"italic",color:"#ccc",fontSize:14}}>📌 {last.notes}</div>}
                 <div style={{...S.card,border:"1px solid rgba(245,200,66,0.2)"}}>
@@ -698,7 +905,7 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
                     <span style={{fontSize:13,fontWeight:700,color:"#f5c842"}}>💡 RECOMANACIONS IA</span>
                     <button onClick={demanarRecs} disabled={recLoad} style={{...S.btnGhost,padding:"4px 10px",fontSize:11}}>{recLoad?"Generant...":recs?"Actualitzar":"Consultar"}</button>
                   </div>
-                  {recs?<div style={{fontSize:13,lineHeight:"1.5",color:"#e2d5bd",whiteSpace:"pre-wrap"}}>{recs}</div>:<div style={{fontSize:12,color:"#6b5a3a"}}>Prem per rebre consells apícoles intel·ligents.</div>}
+                  {recs?<div style={{fontSize:13,lineHeight:"1.5",color:"#e2d5bd",whiteSpace:"pre-wrap"}}>{recs}</div>:<div style={{fontSize:12,color:"#6b5a3a"}}>Prem per rebre consells intel·ligents.</div>}
                 </div>
               </div>
             ):<div style={{textAlign:"center",padding:30,color:"#6b5a3a"}}>Encara no hi ha cap revisió.</div>}</div>)}
@@ -716,10 +923,10 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
                   <span style={{color:"#f5c842",fontWeight:700,fontSize:13}}>{fmtDate(r.date)}</span>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <span style={{fontSize:12,color:"#aaa"}}>Força: {r.forcaColonia!=null?FORCE[r.forcaColonia]:"—"}</span>
-                    <button onClick={()=>handleEdit(r)} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>Editar</button>
+                    <button onClick={()=>handleEdit(r)} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>✏️ Editar</button>
                   </div>
                 </div>
-                <div style={{fontSize:12,color:"#ccc"}}>🍯 {r.quadresMel??"-"}q · 🥚 {r.quadresCria??"-"}q ({r.criaEstat||"—"}) · 🐝 {r.quadresAbelles??"-"}q</div>
+                <div style={{fontSize:12,color:"#ccc"}}>🍯 {r.quadresMel??"-"}q · 🥚 {r.quadresCria??"-"}q ({r.criaEstat||"—"}) · 🐝 {r.quadresAbelles??"-"}q · Pol·len: {r.pollen!=null?POLLEN[r.pollen]:"—"}</div>
                 {r.notes&&<div style={{fontSize:11,color:"#7a6040",marginTop:4,fontStyle:"italic"}}>"{r.notes}"</div>}
               </div>
             ))}</div>)}
@@ -759,7 +966,7 @@ export default function App() {
       const arIds=(ar||[]).map(a=>a.id);
       setArnes(ar||[]);
       if(arIds.length>0){
-        const {data:re}=await _supa.from("revisions").select("*").in("arna_id",arIds).order("date",{ascending:false});
+        const {data:re}=await _supa.from("revisions").select("*").in("arna_id",arIds).order("date",{ascending:true});
         setRevisions(re||[]);
       }
     }
@@ -787,10 +994,9 @@ export default function App() {
     quadres_cria:revData.quadresCria, cria_estat:revData.criaEstat,
     estat_reina:revData.estatReina, celles_reials:revData.cellesReials,
     celles_reials_ubicacio:revData.cellesReialsUbicacio,
-    any_reina:revData.anyReina,
-    varroa_data:revData.varroaData,
-    varroa_pct:revData.varroaPct,
-    tractament_mes:revData.tractamentMes, tipus_tractament:revData.tipusTractament,
+    any_reina:revData.anyReina, varroa_data:revData.varroaData,
+    varroa_pct:revData.varroaPct, tractament_mes:revData.tractamentMes,
+    tipus_tractament:revData.tipusTractament, nucli_sanitari:revData.nucliSanitari||false,
     quadres_buits:revData.quadresBuits, agressivitat:revData.agressivitat, notes:revData.notes
   });
 
@@ -798,17 +1004,16 @@ export default function App() {
     forcaColonia:r.forca_colonia, quadresMel:r.quadres_mel, pollen:r.pollen,
     quadresAbelles:r.quadres_abelles, quadresCria:r.quadres_cria, criaEstat:r.cria_estat,
     estatReina:r.estat_reina, cellesReials:r.celles_reials,
-    cellesReialsUbicacio:r.celles_reials_ubicacio,
-    anyReina:r.any_reina, varroaData:r.varroa_data,
-    varroaPct:r.varroa_pct, tractamentMes:r.tractament_mes,
-    tipusTractament:r.tipus_tractament, quadresBuits:r.quadres_buits,
-    agressivitat:r.agressivitat, notes:r.notes
+    cellesReialsUbicacio:r.celles_reials_ubicacio, anyReina:r.any_reina,
+    varroaData:r.varroa_data, varroaPct:r.varroa_pct, tractamentMes:r.tractament_mes,
+    tipusTractament:r.tipus_tractament, nucliSanitari:r.nucli_sanitari,
+    quadresBuits:r.quadres_buits, agressivitat:r.agressivitat, notes:r.notes
   });
 
   const handleAddRevision=async(revData)=>{
     const obj=revToDb(revData);
     const {data}=await _supa.from("revisions").insert([obj]).select().single();
-    if(data) setRevisions(p=>[data,...p]);
+    if(data) setRevisions(p=>[...p,data].sort((a,b)=>a.date.localeCompare(b.date)));
   };
 
   const handleUpdateRevision=async(revData)=>{
@@ -819,9 +1024,11 @@ export default function App() {
 
   const handleBulkComplete=async(itemsFet)=>{
     if(!selApiari) return;
-    for(const it of itemsFet){
+    // Ordena per data abans de guardar
+    const sorted=[...itemsFet].sort((a,b)=>(a.formData.date||"").localeCompare(b.formData.date||""));
+    for(const it of sorted){
       let targetArnaId=it.arnaId;
-      if(it.mode==="nova"&&it.arnaNum){
+      if(!targetArnaId&&it.arnaNum){
         let existing=arnes.find(a=>a.apiari_id===selApiari.id&&a.numero===it.arnaNum);
         if(!existing){const {data}=await _supa.from("arnes").insert([{apiari_id:selApiari.id,numero:it.arnaNum}]).select().single();if(data){setArnes(p=>[...p,data]);targetArnaId=data.id;}}
         else targetArnaId=existing.id;
@@ -829,6 +1036,7 @@ export default function App() {
       if(targetArnaId) await handleAddRevision({...it.formData,arnaId:targetArnaId});
     }
     setBulkOpen(false);
+    await loadData();
   };
 
   const executeDelete=async()=>{
@@ -850,11 +1058,6 @@ export default function App() {
 
   const apiariArnes=arnes.filter(a=>a.apiari_id===selApiari?.id);
 
-  // Necessitem la columna nova a Supabase
-  const addColIfNeeded=async()=>{
-    try { await _supa.rpc('exec_sql',{sql:"alter table revisions add column if not exists varroa_data date; alter table revisions add column if not exists celles_reials_ubicacio text;"}); } catch(_) {}
-  };
-
   return (
     <div style={S.page}>
       {confirmDel&&(
@@ -869,12 +1072,12 @@ export default function App() {
           </div>
         </div>
       )}
-      {bulkOpen&&selApiari&&<BulkProcessor apiariArnes={apiariArnes} onClose={()=>setBulkOpen(false)} onComplete={handleBulkComplete}/>}
+      {bulkOpen&&selApiari&&<BulkProcessor apiariArnes={apiariArnes} allRevisions={revisions} onClose={()=>setBulkOpen(false)} onComplete={handleBulkComplete}/>}
 
       <div style={{maxWidth:700,margin:"0 auto",padding:"20px 14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"1px solid rgba(255,200,50,0.1)",paddingBottom:12}}>
           <div>
-            <h1 style={{color:"#f5c842",fontSize:22,margin:0}}>🍯 {explotacio.nom}</h1>
+            <h1 style={{color:"#f5c842",fontSize:22,margin:0}}>🐝 {explotacio.nom}</h1>
             <p style={{margin:"2px 0 0",color:"#7a6040",fontSize:11}}>REGA: {explotacio.rega}</p>
           </div>
           <div style={{display:"flex",gap:8}}>
@@ -908,7 +1111,7 @@ export default function App() {
                     </div>
                   );
                 })}
-                {apiaris.length===0&&<div style={{textAlign:"center",padding:30,color:"#5a4a2a"}}>No hi ha cap apiari. Crea'n un dalt.</div>}
+                {apiaris.length===0&&<div style={{textAlign:"center",padding:30,color:"#5a4a2a"}}>No hi ha cap apiari.</div>}
               </div>
             )}
           </div>
@@ -921,7 +1124,7 @@ export default function App() {
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
               <button onClick={()=>setBulkOpen(true)} style={{...S.btnBlue,padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                <span style={{fontSize:22}}>📸 Scan IA</span><span style={{fontSize:11,fontWeight:400,opacity:0.8}}>Escanejar fitxes</span>
+                <span style={{fontSize:22}}>📸 Scan IA</span><span style={{fontSize:11,fontWeight:400,opacity:0.8}}>Puja totes les fitxes</span>
               </button>
               <div style={{...S.card,padding:10,display:"flex",flexDirection:"column",justifyContent:"center"}}>
                 <div style={{display:"flex",gap:6}}>
@@ -935,14 +1138,15 @@ export default function App() {
               {apiariArnes.sort((a,b)=>a.numero-b.numero).map(ar=>{
                 const arRevs=revisions.filter(r=>r.arna_id===ar.id).map(normRev).sort((a,b)=>a.date.localeCompare(b.date));
                 const last=arRevs[arRevs.length-1];
+                const qInfo=qualitat(arRevs);
                 const alerta=last&&(last.varroaPct>=2||last.cellesReials>1||last.forcaColonia<=1);
                 return (
                   <div key={ar.id} style={{...S.card,textAlign:"center",position:"relative",border:alerta?"1px solid rgba(255,140,40,0.5)":S.card.border}}>
-                    {alerta&&<div style={{position:"absolute",top:6,right:8,fontSize:13}}>⚠️</div>}
-                    <div onClick={()=>setSelArna(ar)} style={{cursor:"pointer",paddingBottom:6}}>
-                      <div style={{fontSize:26,marginBottom:4}}>🐝</div>
+                    {qInfo&&<div style={{position:"absolute",top:4,left:6,fontSize:14}} title={qInfo.nivell}>{qInfo.emoji}</div>}
+                    <div onClick={()=>setSelArna(ar)} style={{cursor:"pointer",paddingBottom:6,paddingTop:4}}>
+                      <div style={{fontSize:22,marginBottom:2}}>🐝</div>
                       <div style={{color:"#f5c842",fontWeight:700,fontSize:17}}>#{ar.numero}</div>
-                      {last?(<><div style={{color:"#a0845c",fontSize:10,marginTop:3}}>{last.forcaColonia!=null?FORCE[last.forcaColonia]:"—"}</div><div style={{color:"#5a4a2a",fontSize:9}}>{fmtDate(last.date)}</div></>):(<div style={{color:"#5a4a2a",fontSize:10,marginTop:4}}>Sense revisió</div>)}
+                      {last?(<><div style={{color:"#a0845c",fontSize:10,marginTop:2}}>{last.forcaColonia!=null?FORCE[last.forcaColonia]:"—"}</div><div style={{color:"#5a4a2a",fontSize:9}}>{fmtDate(last.date)}</div></>):(<div style={{color:"#5a4a2a",fontSize:10,marginTop:4}}>Sense revisió</div>)}
                     </div>
                     <button onClick={()=>setConfirmDel({type:"arna",id:ar.id,name:"Arna #"+ar.numero})} style={{background:"none",border:"none",color:"#6b3a3a",cursor:"pointer",fontSize:11,padding:"2px 0"}}>Eliminar</button>
                   </div>
