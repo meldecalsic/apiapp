@@ -25,6 +25,7 @@ const S = {
   btnGold:  { padding:"11px 16px", background:"rgba(245,200,66,0.12)", border:"1px solid rgba(245,200,66,0.3)", borderRadius:8, color:"#f5c842", cursor:"pointer", fontFamily:"inherit", fontSize:14, fontWeight:600 },
   btnBlue:  { padding:"11px 16px", background:"rgba(100,180,255,0.12)", border:"1px solid rgba(100,180,255,0.3)", borderRadius:8, color:"#88bbff", cursor:"pointer", fontFamily:"inherit", fontSize:14, fontWeight:600 },
   btnRed:   { padding:"10px 14px", background:"rgba(255,60,60,0.1)", border:"1px solid rgba(255,60,60,0.25)", borderRadius:8, color:"#ff8888", cursor:"pointer", fontFamily:"inherit", fontSize:14 },
+  btnOrange:{ padding:"10px 14px", background:"rgba(255,140,40,0.12)", border:"1px solid rgba(255,140,40,0.3)", borderRadius:8, color:"#ffaa55", cursor:"pointer", fontFamily:"inherit", fontSize:14 },
 };
 
 const toBase64 = (file) => new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result.split(",")[1]); r.readAsDataURL(file); });
@@ -247,7 +248,6 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
   const [fotoViewer,setFotoViewer]=useState(false);
   useEffect(()=>{ if(initial) setF({...emptyReview(),...initial}); },[JSON.stringify(initial)]);
 
-  // Slider nullable
   const NullSlider=({lbl,field,min,max,opts})=>(
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
@@ -262,7 +262,6 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
     </div>
   );
 
-  // Select nullable
   const NullSel=({lbl,field,opts})=>(
     <div style={{marginBottom:12}}>
       <label style={S.label}>{lbl}</label>
@@ -273,7 +272,6 @@ function ReviewForm({ arnaNumero, initial, onSave, onCancel, loading, compact, p
     </div>
   );
 
-  // Número nullable — usa stepper buttons per evitar problema mòbil amb teclat
   const NullNum=({lbl,field,min,max})=>(
     <div style={{marginBottom:12}}>
       <label style={S.label}>{lbl}</label>
@@ -573,7 +571,7 @@ function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
   const [items,setItems]=useState([]); const [phase,setPhase]=useState("select"); const [currentIdx,setCurrentIdx]=useState(0);
   const fileInputRef = useRef(null); const cameraInputRef = useRef(null);
 
-  const addFiles=files=>{ const news=Array.from(files).map(f=>({id:"img_"+Date.now()+"_"+Math.random().toString(36).slice(2),file:f,preview:URL.createObjectURL(f),status:"pendent",result:null,formData:emptyReview(),arnaId:null,arnaNum:null,warning:null})); setItems(p=>[...p,...news]); };
+  const addFiles=files=>{ const news=Array.from(files).map(f=>({id:"img_"+Date.now()+"_"+Math.random().toString(36).slice(2),file:f,preview:URL.createObjectURL(f),status:"pendent",result:null,formData:emptyReview(),arnaId:null,arnaNum:null,warning:null,dupRevId:null})); setItems(p=>[...p,...news]); };
   const removeItem=id=>setItems(p=>p.filter(i=>i.id!==id));
   const updateItem=(id,ch)=>setItems(p=>p.map(it=>it.id===id?{...it,...ch}:it));
 
@@ -585,21 +583,24 @@ function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
         const b64=await toBase64(items[i].file);
         const result=await readFitxaAI(b64,items[i].file.type);
         if(result){
-          // Detecta arna
           const matched = result.numero ? apiariArnes.find(a=>a.numero===result.numero) : null;
           const {numero,...rest}=result;
 
-          // Detecta duplicat per data
+          // Detecta duplicat de revisió per data
           let warning = null;
+          let dupRevId = null;
           if(matched && result.date) {
             const dup = allRevisions.find(r=>r.arna_id===matched.id && r.date===result.date);
-            if(dup) warning = "⚠️ Ja hi ha una revisió d'aquesta data per l'Arna #"+numero;
+            if(dup) {
+              warning = "⚠️ Ja hi ha una revisió del "+fmtDate(result.date)+" per l'Arna #"+numero;
+              dupRevId = dup.id;
+            }
           }
 
           setItems(p=>p.map((it,idx)=>idx===i?{
             ...it, status:"fet", result,
             formData:{...emptyReview(),...rest,date:result.date},
-            arnaId:matched?.id||null, arnaNum:numero||null, warning
+            arnaId:matched?.id||null, arnaNum:numero||null, warning, dupRevId
           }:it));
         } else {
           setItems(p=>p.map((it,idx)=>idx===i?{...it,status:"error"}:it));
@@ -609,7 +610,6 @@ function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
     setPhase("review");
   };
 
-  // Només guarda les que tenen arna assignada i no estan marcades com skip
   const readyItems = items.filter(it=>(it.status==="fet"||it.status==="error") && !it.skip && (it.arnaId||(it.arnaNum)));
   const saveAll=()=>onComplete(readyItems);
 
@@ -681,13 +681,9 @@ function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
     </div>
   );
 
-  // FASE REVIEW — agrupat per arna, ordenat per data
+  // FASE REVIEW
   const byArna = {};
-  items.forEach(it=>{
-    const key = it.arnaNum || "desconeguda";
-    if(!byArna[key]) byArna[key]=[];
-    byArna[key].push(it);
-  });
+  items.forEach(it=>{ const key = it.arnaNum || "desconeguda"; if(!byArna[key]) byArna[key]=[]; byArna[key].push(it); });
   Object.values(byArna).forEach(g=>g.sort((a,b)=>(a.formData.date||"").localeCompare(b.formData.date||"")));
 
   return (
@@ -718,7 +714,19 @@ function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
                       </span>
                       <button onClick={()=>updateItem(it.id,{skip:!it.skip})} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>{it.skip?"Incloure":"Saltar"}</button>
                     </div>
-                    {it.warning&&<div style={{color:"#ff9944",fontSize:11,marginTop:4}}>{it.warning}</div>}
+                    {it.warning&&(
+                      <div style={{marginTop:6}}>
+                        <div style={{color:"#ff9944",fontSize:11}}>{it.warning}</div>
+                        {it.dupRevId&&(
+                          <button
+                            onClick={()=>updateItem(it.id,{_deleteDup:!it._deleteDup})}
+                            style={{...S.btnRed,padding:"3px 8px",fontSize:11,marginTop:4,opacity:it._deleteDup?1:0.6}}
+                          >
+                            {it._deleteDup?"✓ S'esborrarà la duplicada":"🗑 Esborrar revisió duplicada"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {!it.arnaId&&it.arnaNum&&<div style={{color:"#88bbff",fontSize:11,marginTop:2}}>Nova arna #{it.arnaNum} (es crearà)</div>}
                     {!it.arnaNum&&<div style={{color:"#ff8888",fontSize:11,marginTop:2}}>Número d'arna no detectat</div>}
                   </div>
@@ -744,7 +752,7 @@ function BulkProcessor({ apiariArnes, allRevisions, onComplete, onClose }) {
 }
 
 // ─── ARNA DETAIL ──────────────────────────────────────────────────────────────
-function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }) {
+function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDeleteRevision, onBack }) {
   const [tab,setTab]=useState("resum");
   const [showForm,setShowForm]=useState(false);
   const [editingRev,setEditingRev]=useState(null);
@@ -755,6 +763,7 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
   const [recs,setRecs]=useState(""); const [recLoad,setRecLoad]=useState(false);
   const [warnMsg,setWarnMsg]=useState(null);
   const [pendingResult,setPendingResult]=useState(null);
+  const [confirmDelRev,setConfirmDelRev]=useState(null);
   const fileInputRef=useRef(null); const cameraInputRef=useRef(null);
 
   const sorted=[...revisions].sort((a,b)=>a.date.localeCompare(b.date));
@@ -771,14 +780,12 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
     setAiLoad(false);
     if(!result){ setAiPrefill(null); setShowForm(true); return; }
 
-    // Comprova si l'arna detectada és diferent
     if(result.numero && result.numero !== arna.numero) {
       setWarnMsg(`⚠️ La IA ha detectat l'Arna #${result.numero}, però estàs a l'Arna #${arna.numero}. Vols continuar igualment?`);
       setPendingResult(result);
       return;
     }
 
-    // Comprova duplicat de data
     const dupDate = result.date && revisions.find(r=>r.date===result.date);
     if(dupDate) {
       setWarnMsg(`⚠️ Ja hi ha una revisió del ${fmtDate(result.date)} per aquesta arna. Vols sobreescriure-la o afegir-la igualment?`);
@@ -811,9 +818,12 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
   const T=t=>({padding:"8px 14px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:tab===t?"rgba(245,200,66,0.15)":"transparent",color:tab===t?"#f5c842":"#6b5a3a",borderBottom:"2px solid "+(tab===t?"#f5c842":"transparent")});
   const valOr=(v,arr)=>v!=null&&arr?arr[v]:(v!=null?v:"—");
 
+  // Detecta duplicats per data a l'historial
+  const dateCount = {};
+  revisions.forEach(r=>{ dateCount[r.date]=(dateCount[r.date]||0)+1; });
+
   return (
     <div style={S.page}>
-      {/* Avís de confirmació */}
       {warnMsg&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{...S.card,maxWidth:400,width:"100%"}}>
@@ -826,6 +836,19 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
         </div>
       )}
 
+      {confirmDelRev&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...S.card,background:"#140f02",maxWidth:400,width:"100%",textAlign:"center"}}>
+            <h4 style={{color:"#ff8888",margin:"0 0 10px"}}>Eliminar revisió?</h4>
+            <p style={{fontSize:13,color:"#ccc",margin:"0 0 20px"}}>Segur que vols eliminar la revisió del <strong>{fmtDate(confirmDelRev.date)}</strong>? Aquesta acció no es pot desfer.</p>
+            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+              <button onClick={async()=>{await onDeleteRevision(confirmDelRev.id);setConfirmDelRev(null);}} style={S.btnRed}>Eliminar</button>
+              <button onClick={()=>setConfirmDelRev(null)} style={S.btnGhost}>Cancel·lar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{maxWidth:700,margin:"0 auto",padding:"0 14px 40px"}}>
         <div style={{padding:"18px 0 14px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,200,50,0.08)"}}>
           <button onClick={onBack} style={{background:"none",border:"none",color:"#f5c842",cursor:"pointer",fontSize:22,padding:0}}>←</button>
@@ -833,6 +856,7 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <h2 style={{margin:0,color:"#f5c842",fontSize:20}}>Arna #{arna.numero}</h2>
               {qInfo&&<span title={qInfo.factors.join("\n")} style={{fontSize:20,cursor:"help"}}>{qInfo.emoji}</span>}
+              {arna.morta&&<span style={{fontSize:12,color:"#888",background:"rgba(0,0,0,0.3)",padding:"2px 8px",borderRadius:10}}>💀 Morta {arna.data_mort?fmtDate(arna.data_mort):""}</span>}
             </div>
             {qInfo&&<p style={{margin:"2px 0 0",color:qInfo.color,fontSize:11}}>{qInfo.nivell} ({qInfo.score}/100)</p>}
             {last&&<p style={{margin:"1px 0 0",color:"#7a6040",fontSize:10}}>
@@ -918,19 +942,27 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onBack }
               </>
             ):<div style={{textAlign:"center",padding:30,color:"#6b5a3a"}}>Es necessiten almenys dues revisions.</div>}</div>)}
 
-            {tab==="historic"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>{[...sorted].reverse().map(r=>(
-              <div key={r.id} style={{...S.card,padding:12,background:"rgba(255,255,255,0.02)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.04)",paddingBottom:4,marginBottom:6}}>
-                  <span style={{color:"#f5c842",fontWeight:700,fontSize:13}}>{fmtDate(r.date)}</span>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <span style={{fontSize:12,color:"#aaa"}}>Força: {r.forcaColonia!=null?FORCE[r.forcaColonia]:"—"}</span>
-                    <button onClick={()=>handleEdit(r)} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>✏️ Editar</button>
+            {tab==="historic"&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {[...sorted].reverse().map(r=>(
+                  <div key={r.id} style={{...S.card,padding:12,background:"rgba(255,255,255,0.02)",border:dateCount[r.date]>1?"1px solid rgba(255,140,40,0.35)":S.card.border}}>
+                    <div style={{display:"flex",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.04)",paddingBottom:4,marginBottom:6}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{color:"#f5c842",fontWeight:700,fontSize:13}}>{fmtDate(r.date)}</span>
+                        {dateCount[r.date]>1&&<span style={{fontSize:10,color:"#ff9944",background:"rgba(255,140,40,0.12)",padding:"1px 6px",borderRadius:8}}>⚠️ Duplicada</span>}
+                      </div>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:12,color:"#aaa"}}>Força: {r.forcaColonia!=null?FORCE[r.forcaColonia]:"—"}</span>
+                        <button onClick={()=>handleEdit(r)} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>✏️</button>
+                        <button onClick={()=>setConfirmDelRev(r)} style={{...S.btnRed,padding:"3px 8px",fontSize:11}}>🗑</button>
+                      </div>
+                    </div>
+                    <div style={{fontSize:12,color:"#ccc"}}>🍯 {r.quadresMel??"-"}q · 🥚 {r.quadresCria??"-"}q ({r.criaEstat||"—"}) · 🐝 {r.quadresAbelles??"-"}q · Pol·len: {r.pollen!=null?POLLEN[r.pollen]:"—"}</div>
+                    {r.notes&&<div style={{fontSize:11,color:"#7a6040",marginTop:4,fontStyle:"italic"}}>"{r.notes}"</div>}
                   </div>
-                </div>
-                <div style={{fontSize:12,color:"#ccc"}}>🍯 {r.quadresMel??"-"}q · 🥚 {r.quadresCria??"-"}q ({r.criaEstat||"—"}) · 🐝 {r.quadresAbelles??"-"}q · Pol·len: {r.pollen!=null?POLLEN[r.pollen]:"—"}</div>
-                {r.notes&&<div style={{fontSize:11,color:"#7a6040",marginTop:4,fontStyle:"italic"}}>"{r.notes}"</div>}
+                ))}
               </div>
-            ))}</div>)}
+            )}
           </>
         )}
       </div>
@@ -949,6 +981,17 @@ export default function App() {
   const [newApiariNom,setNewApiariNom]=useState(""); const [newApiariLat,setNewApiariLat]=useState(""); const [newApiariLng,setNewApiariLng]=useState(""); const [newApiariAlt,setNewApiariAlt]=useState(0);
   const [newArnaNum,setNewArnaNum]=useState("");
 
+  // ── NOUS ESTATS ──
+  const [selectedArnes,setSelectedArnes]=useState(new Set()); // ids seleccionades
+  const [selectMode,setSelectMode]=useState(false);           // mode selecció actiu
+  const [showDeadArnes,setShowDeadArnes]=useState(false);     // toggle mortes
+  const [confirmDelSelected,setConfirmDelSelected]=useState(false);
+  const [markDeadDialog,setMarkDeadDialog]=useState(null);    // arna a marcar com morta
+  const [deathDate,setDeathDate]=useState(new Date().toISOString().split("T")[0]);
+  const [editNumDialog,setEditNumDialog]=useState(null);      // arna a editar número
+  const [editNumVal,setEditNumVal]=useState("");
+  const [editNumErr,setEditNumErr]=useState("");
+
   useEffect(()=>{
     _supa.auth.getSession().then(({data:{session}})=>{ setUsuari(session?.user||null); setAuthLoading(false); });
     const {data:{subscription}}=_supa.auth.onAuthStateChange((_,session)=>{ setUsuari(session?.user||null); if(!session){setExplotacio(null);setApiaris([]);setArnes([]);setRevisions([]);} });
@@ -956,6 +999,9 @@ export default function App() {
   },[]);
 
   useEffect(()=>{ if(explotacio) loadData(); },[explotacio]);
+
+  // Reset selecció quan canvia d'apiari
+  useEffect(()=>{ setSelectedArnes(new Set()); setSelectMode(false); },[selApiari]);
 
   const loadData=async()=>{
     setLoading(true);
@@ -1023,11 +1069,20 @@ export default function App() {
     if(data) setRevisions(p=>p.map(r=>r.id===revData.id?data:r));
   };
 
+  const handleDeleteRevision=async(revId)=>{
+    await _supa.from("revisions").delete().eq("id",revId);
+    setRevisions(p=>p.filter(r=>r.id!==revId));
+  };
+
   const handleBulkComplete=async(itemsFet)=>{
     if(!selApiari) return;
-    // Ordena per data abans de guardar
     const sorted=[...itemsFet].sort((a,b)=>(a.formData.date||"").localeCompare(b.formData.date||""));
     for(const it of sorted){
+      // Si s'ha marcat per esborrar duplicada, primer eliminem
+      if(it.dupRevId && it._deleteDup) {
+        await _supa.from("revisions").delete().eq("id",it.dupRevId);
+        setRevisions(p=>p.filter(r=>r.id!==it.dupRevId));
+      }
       let targetArnaId=it.arnaId;
       if(!targetArnaId&&it.arnaNum){
         let existing=arnes.find(a=>a.apiari_id===selApiari.id&&a.numero===it.arnaNum);
@@ -1048,19 +1103,70 @@ export default function App() {
     setConfirmDel(null);
   };
 
+  // ── ELIMINAR SELECCIONADES ──
+  const handleDeleteSelected=async()=>{
+    for(const arnaId of selectedArnes){
+      await _supa.from("arnes").delete().eq("id",arnaId);
+    }
+    setArnes(p=>p.filter(a=>!selectedArnes.has(a.id)));
+    setRevisions(p=>p.filter(r=>!selectedArnes.has(r.arna_id)));
+    setSelectedArnes(new Set());
+    setSelectMode(false);
+    setConfirmDelSelected(false);
+  };
+
+  // ── MARCAR COM A MORTA ──
+  const handleMarkDead=async()=>{
+    if(!markDeadDialog) return;
+    const {data}=await _supa.from("arnes").update({morta:true,data_mort:deathDate}).eq("id",markDeadDialog.id).select().single();
+    if(data) setArnes(p=>p.map(a=>a.id===markDeadDialog.id?data:a));
+    setMarkDeadDialog(null);
+  };
+
+  const handleUnmarkDead=async(arnaId)=>{
+    const {data}=await _supa.from("arnes").update({morta:false,data_mort:null}).eq("id",arnaId).select().single();
+    if(data) setArnes(p=>p.map(a=>a.id===arnaId?data:a));
+  };
+
+  // ── EDITAR NÚMERO ARNA ──
+  const handleEditNum=async()=>{
+    if(!editNumDialog) return;
+    const num=parseInt(editNumVal);
+    if(isNaN(num)||num<1){setEditNumErr("Número invàlid");return;}
+    if(num===editNumDialog.numero){setEditNumDialog(null);return;}
+    const conflict=arnes.find(a=>a.apiari_id===editNumDialog.apiari_id&&a.numero===num&&a.id!==editNumDialog.id);
+    if(conflict){setEditNumErr("El número "+num+" ja existeix en aquest apiari");return;}
+    const {data}=await _supa.from("arnes").update({numero:num}).eq("id",editNumDialog.id).select().single();
+    if(data) setArnes(p=>p.map(a=>a.id===editNumDialog.id?data:a));
+    setEditNumDialog(null); setEditNumVal(""); setEditNumErr("");
+  };
+
+  // ── TOGGLE SELECCIÓ ──
+  const toggleSelect=(arnaId)=>{
+    setSelectedArnes(prev=>{
+      const next=new Set(prev);
+      if(next.has(arnaId)) next.delete(arnaId); else next.add(arnaId);
+      return next;
+    });
+  };
+
   if(authLoading) return <div style={{...S.page,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{color:"#f5c842",fontSize:18,fontWeight:700}}>Carregant... 🐝</div></div>;
   if(!usuari) return <AuthScreen onAuth={setUsuari}/>;
   if(!explotacio) return <ExplotacionsScreen usuari={usuari} onSelect={setExplotacio} onLogout={()=>_supa.auth.signOut()}/>;
 
   if(selArna) return (
     <ArnaDetail arna={selArna} revisions={revisions.filter(r=>r.arna_id===selArna.id).map(normRev)}
-      onAddRevision={handleAddRevision} onUpdateRevision={handleUpdateRevision} onBack={()=>setSelArna(null)}/>
+      onAddRevision={handleAddRevision} onUpdateRevision={handleUpdateRevision}
+      onDeleteRevision={handleDeleteRevision} onBack={()=>setSelArna(null)}/>
   );
 
   const apiariArnes=arnes.filter(a=>a.apiari_id===selApiari?.id);
+  const visibleArnes=apiariArnes.filter(a=>showDeadArnes||!a.morta);
+  const deadCount=apiariArnes.filter(a=>a.morta).length;
 
   return (
     <div style={S.page}>
+      {/* CONFIRM DELETE APIARI/ARNA */}
       {confirmDel&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
           <div style={{...S.card,background:"#140f02",maxWidth:400,width:"100%",textAlign:"center"}}>
@@ -1073,6 +1179,57 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* CONFIRM DELETE SELECCIONADES */}
+      {confirmDelSelected&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
+          <div style={{...S.card,background:"#140f02",maxWidth:400,width:"100%",textAlign:"center"}}>
+            <h4 style={{color:"#ff8888",margin:"0 0 10px"}}>Eliminar {selectedArnes.size} arnes?</h4>
+            <p style={{fontSize:13,color:"#ccc",margin:"0 0 20px"}}>S'eliminaran les arnes seleccionades i totes les seves revisions. Aquesta acció no es pot desfer.</p>
+            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+              <button onClick={handleDeleteSelected} style={S.btnRed}>Eliminar totes</button>
+              <button onClick={()=>setConfirmDelSelected(false)} style={S.btnGhost}>Cancel·lar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIALOG MARCAR MORTA */}
+      {markDeadDialog&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
+          <div style={{...S.card,background:"#140f02",maxWidth:380,width:"100%"}}>
+            <h4 style={{color:"#ffaa55",margin:"0 0 12px"}}>💀 Marcar Arna #{markDeadDialog.numero} com a morta</h4>
+            <div style={{marginBottom:14}}>
+              <label style={S.label}>Data de mort</label>
+              <input type="date" value={deathDate} onChange={e=>setDeathDate(e.target.value)} style={S.input}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={handleMarkDead} style={{...S.btnOrange,flex:1}}>Confirmar</button>
+              <button onClick={()=>setMarkDeadDialog(null)} style={S.btnGhost}>Cancel·lar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIALOG EDITAR NÚMERO */}
+      {editNumDialog&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:14}}>
+          <div style={{...S.card,background:"#140f02",maxWidth:360,width:"100%"}}>
+            <h4 style={{color:"#f5c842",margin:"0 0 12px"}}>✏️ Editar número d'arna</h4>
+            <p style={{fontSize:12,color:"#7a6040",margin:"0 0 12px"}}>Número actual: #{editNumDialog.numero}</p>
+            <div style={{marginBottom:10}}>
+              <label style={S.label}>Nou número</label>
+              <input type="number" value={editNumVal} onChange={e=>{setEditNumVal(e.target.value);setEditNumErr("");}} style={S.input} placeholder={editNumDialog.numero} autoFocus/>
+            </div>
+            {editNumErr&&<div style={{color:"#ff8888",fontSize:12,marginBottom:10}}>{editNumErr}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={handleEditNum} style={{...S.btnPri,flex:1}}>Guardar</button>
+              <button onClick={()=>{setEditNumDialog(null);setEditNumVal("");setEditNumErr("");}} style={S.btnGhost}>Cancel·lar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {bulkOpen&&selApiari&&<BulkProcessor apiariArnes={apiariArnes} allRevisions={revisions} onClose={()=>setBulkOpen(false)} onComplete={handleBulkComplete}/>}
 
       <div style={{maxWidth:700,margin:"0 auto",padding:"20px 14px"}}>
@@ -1101,12 +1258,13 @@ export default function App() {
             {loading?<div style={{color:"#7a6040",textAlign:"center",padding:20}}>Carregant...</div>:(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {apiaris.map(ap=>{
-                  const count=arnes.filter(a=>a.apiari_id===ap.id).length;
+                  const count=arnes.filter(a=>a.apiari_id===ap.id&&!a.morta).length;
+                  const deadC=arnes.filter(a=>a.apiari_id===ap.id&&a.morta).length;
                   return (
                     <div key={ap.id} style={{...S.card,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div onClick={()=>setSelApiari(ap)} style={{cursor:"pointer",flex:1}}>
                         <div style={{fontSize:17,fontWeight:700,color:"#f5c842"}}>🏡 {ap.nom}</div>
-                        <div style={{fontSize:12,color:"#7a6040",marginTop:2}}>{count} arnes{ap.lat?` · ${ap.lat}, ${ap.lng}`:""}  {ap.altitud?`· ${ap.altitud}m`:""}</div>
+                        <div style={{fontSize:12,color:"#7a6040",marginTop:2}}>{count} arnes{deadC>0?` · 💀 ${deadC} mortes`:""}  {ap.lat?`· ${ap.lat}, ${ap.lng}`:""}  {ap.altitud?`· ${ap.altitud}m`:""}</div>
                       </div>
                       <button onClick={()=>setConfirmDel({type:"apiari",id:ap.id,name:ap.nom})} style={{background:"none",border:"none",color:"#6b3a3a",cursor:"pointer",fontSize:12}}>Eliminar</button>
                     </div>
@@ -1123,6 +1281,7 @@ export default function App() {
               {selApiari.altitud>0&&<p style={{color:"#7a6040",fontSize:11,margin:"2px 0 0"}}>Altitud: {selApiari.altitud}m</p>}
               {selApiari.lat&&selApiari.lng&&<MeteoWidget lat={parseFloat(selApiari.lat)} lng={parseFloat(selApiari.lng)} altitud={selApiari.altitud||0}/>}
             </div>
+
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
               <button onClick={()=>setBulkOpen(true)} style={{...S.btnBlue,padding:"14px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
                 <span style={{fontSize:22}}>📸 Scan IA</span><span style={{fontSize:11,fontWeight:400,opacity:0.8}}>Puja totes les fitxes</span>
@@ -1134,22 +1293,113 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <h3 style={{color:"#d4a855",fontSize:13,fontWeight:700,letterSpacing:1,marginBottom:10}}>ARNES ({apiariArnes.length})</h3>
+
+            {/* BARRA EINES ARNES */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+              <h3 style={{color:"#d4a855",fontSize:13,fontWeight:700,letterSpacing:1,margin:0}}>
+                ARNES ({visibleArnes.length}{deadCount>0&&!showDeadArnes?` + ${deadCount} mortes`:""})
+              </h3>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {deadCount>0&&(
+                  <button onClick={()=>setShowDeadArnes(p=>!p)} style={{...S.btnGhost,padding:"5px 10px",fontSize:11,color:showDeadArnes?"#ffaa55":"#aaa"}}>
+                    {showDeadArnes?"👁 Ocultar mortes":"💀 Mostrar mortes ("+deadCount+")"}
+                  </button>
+                )}
+                <button
+                  onClick={()=>{setSelectMode(p=>!p);setSelectedArnes(new Set());}}
+                  style={{...S.btnGhost,padding:"5px 10px",fontSize:11,color:selectMode?"#f5c842":"#aaa"}}
+                >
+                  {selectMode?"✕ Cancel·lar":"☑ Seleccionar"}
+                </button>
+              </div>
+            </div>
+
+            {/* BARRA ACCIONS SELECCIÓ */}
+            {selectMode&&selectedArnes.size>0&&(
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,padding:"10px 12px",background:"rgba(245,200,66,0.06)",border:"1px solid rgba(245,200,66,0.15)",borderRadius:10,flexWrap:"wrap"}}>
+                <span style={{color:"#f5c842",fontSize:13,fontWeight:600}}>{selectedArnes.size} seleccionades</span>
+                <button onClick={()=>setConfirmDelSelected(true)} style={{...S.btnRed,padding:"6px 12px",fontSize:12}}>🗑 Eliminar seleccionades</button>
+                <button onClick={()=>{setSelectedArnes(new Set(visibleArnes.map(a=>a.id)));}} style={{...S.btnGhost,padding:"6px 10px",fontSize:11}}>Seleccionar totes</button>
+                <button onClick={()=>setSelectedArnes(new Set())} style={{...S.btnGhost,padding:"6px 10px",fontSize:11}}>Desseleccionar</button>
+              </div>
+            )}
+
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
-              {apiariArnes.sort((a,b)=>a.numero-b.numero).map(ar=>{
+              {visibleArnes.sort((a,b)=>a.numero-b.numero).map(ar=>{
                 const arRevs=revisions.filter(r=>r.arna_id===ar.id).map(normRev).sort((a,b)=>a.date.localeCompare(b.date));
                 const last=arRevs[arRevs.length-1];
                 const qInfo=qualitat(arRevs);
                 const alerta=last&&(last.varroaPct>=2||last.cellesReials>1||last.forcaColonia<=1);
+                const isSelected=selectedArnes.has(ar.id);
+
                 return (
-                  <div key={ar.id} style={{...S.card,textAlign:"center",position:"relative",border:alerta?"1px solid rgba(255,140,40,0.5)":S.card.border}}>
-                    {qInfo&&<div style={{position:"absolute",top:4,left:6,fontSize:14}} title={qInfo.nivell}>{qInfo.emoji}</div>}
-                    <div onClick={()=>setSelArna(ar)} style={{cursor:"pointer",paddingBottom:6,paddingTop:4}}>
+                  <div key={ar.id} style={{
+                    ...S.card,
+                    textAlign:"center",
+                    position:"relative",
+                    border:isSelected?"2px solid #f5c842":alerta?"1px solid rgba(255,140,40,0.5)":ar.morta?"1px solid rgba(100,100,100,0.3)":S.card.border,
+                    opacity:ar.morta?0.55:1,
+                    background:isSelected?"rgba(245,200,66,0.08)":ar.morta?"rgba(50,50,50,0.15)":S.card.background,
+                  }}>
+                    {/* Checkbox selecció */}
+                    {selectMode&&(
+                      <div
+                        onClick={()=>toggleSelect(ar.id)}
+                        style={{position:"absolute",top:6,left:6,width:20,height:20,borderRadius:4,border:"2px solid "+(isSelected?"#f5c842":"rgba(255,200,50,0.3)"),background:isSelected?"#f5c842":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}
+                      >
+                        {isSelected&&<span style={{color:"#1a0a00",fontSize:13,fontWeight:700,lineHeight:1}}>✓</span>}
+                      </div>
+                    )}
+
+                    {qInfo&&!ar.morta&&<div style={{position:"absolute",top:4,left:selectMode?30:6,fontSize:14}} title={qInfo.nivell}>{qInfo.emoji}</div>}
+                    {ar.morta&&<div style={{position:"absolute",top:4,left:selectMode?30:6,fontSize:14}}>💀</div>}
+
+                    <div
+                      onClick={()=>{ if(selectMode){toggleSelect(ar.id);return;} setSelArna(ar); }}
+                      style={{cursor:"pointer",paddingBottom:6,paddingTop:4}}
+                    >
                       <div style={{fontSize:22,marginBottom:2}}>🐝</div>
-                      <div style={{color:"#f5c842",fontWeight:700,fontSize:17}}>#{ar.numero}</div>
-                      {last?(<><div style={{color:"#a0845c",fontSize:10,marginTop:2}}>{last.forcaColonia!=null?FORCE[last.forcaColonia]:"—"}</div><div style={{color:"#5a4a2a",fontSize:9}}>{fmtDate(last.date)}</div></>):(<div style={{color:"#5a4a2a",fontSize:10,marginTop:4}}>Sense revisió</div>)}
+                      <div style={{color:ar.morta?"#888":"#f5c842",fontWeight:700,fontSize:17}}>#{ar.numero}</div>
+                      {ar.morta?(
+                        <div style={{color:"#5a5a5a",fontSize:10,marginTop:2}}>Morta{ar.data_mort?" "+fmtDate(ar.data_mort):""}</div>
+                      ):last?(
+                        <>
+                          <div style={{color:"#a0845c",fontSize:10,marginTop:2}}>{last.forcaColonia!=null?FORCE[last.forcaColonia]:"—"}</div>
+                          <div style={{color:"#5a4a2a",fontSize:9}}>{fmtDate(last.date)}</div>
+                        </>
+                      ):(
+                        <div style={{color:"#5a4a2a",fontSize:10,marginTop:4}}>Sense revisió</div>
+                      )}
                     </div>
-                    <button onClick={()=>setConfirmDel({type:"arna",id:ar.id,name:"Arna #"+ar.numero})} style={{background:"none",border:"none",color:"#6b3a3a",cursor:"pointer",fontSize:11,padding:"2px 0"}}>Eliminar</button>
+
+                    {/* Botons acció a la part inferior */}
+                    {!selectMode&&(
+                      <div style={{display:"flex",justifyContent:"center",gap:4,paddingBottom:4}}>
+                        <button
+                          onClick={e=>{e.stopPropagation();setEditNumDialog(ar);setEditNumVal(String(ar.numero));setEditNumErr("");}}
+                          style={{background:"none",border:"none",color:"#5a6a7a",cursor:"pointer",fontSize:11,padding:"2px 4px"}}
+                          title="Editar número"
+                        >✏️</button>
+                        {!ar.morta?(
+                          <button
+                            onClick={e=>{e.stopPropagation();setMarkDeadDialog(ar);setDeathDate(new Date().toISOString().split("T")[0]);}}
+                            style={{background:"none",border:"none",color:"#6b5a3a",cursor:"pointer",fontSize:11,padding:"2px 4px"}}
+                            title="Marcar com a morta"
+                          >💀</button>
+                        ):(
+                          <button
+                            onClick={e=>{e.stopPropagation();handleUnmarkDead(ar.id);}}
+                            style={{background:"none",border:"none",color:"#5a7a5a",cursor:"pointer",fontSize:11,padding:"2px 4px"}}
+                            title="Marcar com a viva"
+                          >♻️</button>
+                        )}
+                        <button
+                          onClick={e=>{e.stopPropagation();setConfirmDel({type:"arna",id:ar.id,name:"Arna #"+ar.numero});}}
+                          style={{background:"none",border:"none",color:"#6b3a3a",cursor:"pointer",fontSize:11,padding:"2px 4px"}}
+                          title="Eliminar"
+                        >🗑</button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
