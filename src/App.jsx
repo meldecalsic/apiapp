@@ -30,6 +30,18 @@ const S = {
 
 const toBase64 = (file) => new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result.split(",")[1]); r.readAsDataURL(file); });
 
+// Puja una foto al bucket 'fitxes' i retorna la URL pública
+async function uploadFoto(file, arnaId) {
+  try {
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `arna_${arnaId}/${Date.now()}.${ext}`;
+    const { error } = await _supa.storage.from("fitxes").upload(path, file, { upsert: false });
+    if (error) return null;
+    const { data } = _supa.storage.from("fitxes").getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch(_) { return null; }
+}
+
 async function hashPassword(pwd) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pwd));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
@@ -760,10 +772,13 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
   const [aiLoad,setAiLoad]=useState(false);
   const [saveLoad,setSaveLoad]=useState(false);
   const [photoUrl,setPhotoUrl]=useState(null);
+  const [photoFile,setPhotoFile]=useState(null); // fitxer original per pujar
   const [recs,setRecs]=useState(""); const [recLoad,setRecLoad]=useState(false);
   const [warnMsg,setWarnMsg]=useState(null);
   const [pendingResult,setPendingResult]=useState(null);
+  const [pendingFile,setPendingFile]=useState(null);
   const [confirmDelRev,setConfirmDelRev]=useState(null);
+  const [viewerUrl,setViewerUrl]=useState(null); // per miniatures de l'historial
   const fileInputRef=useRef(null); const cameraInputRef=useRef(null);
 
   const sorted=[...revisions].sort((a,b)=>a.date.localeCompare(b.date));
@@ -774,7 +789,9 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
   const handlePhoto=async file=>{ 
     if(!file) return; 
     setAiLoad(true); 
-    setPhotoUrl(URL.createObjectURL(file)); 
+    const localUrl = URL.createObjectURL(file);
+    setPhotoUrl(localUrl);
+    setPhotoFile(file);
     const b64=await toBase64(file); 
     const result=await readFitxaAI(b64,file.type); 
     setAiLoad(false);
@@ -783,6 +800,7 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
     if(result.numero && result.numero !== arna.numero) {
       setWarnMsg(`⚠️ La IA ha detectat l'Arna #${result.numero}, però estàs a l'Arna #${arna.numero}. Vols continuar igualment?`);
       setPendingResult(result);
+      setPendingFile(file);
       return;
     }
 
@@ -790,6 +808,7 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
     if(dupDate) {
       setWarnMsg(`⚠️ Ja hi ha una revisió del ${fmtDate(result.date)} per aquesta arna. Vols sobreescriure-la o afegir-la igualment?`);
       setPendingResult(result);
+      setPendingFile(file);
       return;
     }
 
@@ -801,18 +820,19 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
   const confirmPhoto=()=>{ 
     if(!pendingResult) return;
     const{numero,...rest}=pendingResult;
-    setAiPrefill({...emptyReview(),...rest}); 
+    setAiPrefill({...emptyReview(),...rest});
+    if(pendingFile) setPhotoFile(pendingFile);
     setShowForm(true); 
-    setWarnMsg(null); setPendingResult(null); 
+    setWarnMsg(null); setPendingResult(null); setPendingFile(null);
   };
 
   const handleSave=async data=>{ 
     setSaveLoad(true); 
-    if(editingRev?.id) await onUpdateRevision({...data,id:editingRev.id,arnaId:arna.id});
-    else await onAddRevision({...data,arnaId:arna.id}); 
-    setShowForm(false); setEditingRev(null); setAiPrefill(null); setPhotoUrl(null); setSaveLoad(false); 
+    if(editingRev?.id) await onUpdateRevision({...data,id:editingRev.id,arnaId:arna.id,fotoUrl:editingRev.fotoUrl||null}, photoFile);
+    else await onAddRevision({...data,arnaId:arna.id}, photoFile); 
+    setShowForm(false); setEditingRev(null); setAiPrefill(null); setPhotoUrl(null); setPhotoFile(null); setSaveLoad(false); 
   };
-  const handleEdit=rev=>{ setEditingRev(rev); setAiPrefill(null); setPhotoUrl(null); setShowForm(true); };
+  const handleEdit=rev=>{ setEditingRev(rev); setAiPrefill(null); setPhotoUrl(rev.fotoUrl||null); setPhotoFile(null); setShowForm(true); };
   const demanarRecs=async()=>{ setRecLoad(true); const text=await getRecomanacions(last); setRecs(text); setRecLoad(false); };
 
   const T=t=>({padding:"8px 14px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:12,background:tab===t?"rgba(245,200,66,0.15)":"transparent",color:tab===t?"#f5c842":"#6b5a3a",borderBottom:"2px solid "+(tab===t?"#f5c842":"transparent")});
@@ -824,6 +844,7 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
 
   return (
     <div style={S.page}>
+      {viewerUrl&&<FotoViewer url={viewerUrl} onClose={()=>setViewerUrl(null)}/>}
       {warnMsg&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{...S.card,maxWidth:400,width:"100%"}}>
@@ -872,14 +893,14 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
               <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={e=>{if(e.target.files?.[0])handlePhoto(e.target.files[0]);e.target.value="";}} style={{display:"none"}}/>
               <button onClick={()=>fileInputRef.current?.click()} style={{...S.btnGhost,fontSize:13}}>🖼️ Galeria</button>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={e=>{if(e.target.files?.[0])handlePhoto(e.target.files[0]);e.target.value="";}} style={{display:"none"}}/>
-              <button onClick={()=>{setAiPrefill(null);setPhotoUrl(null);setEditingRev(null);setShowForm(true);}} style={S.btnGold}>✍️ Manual</button>
+              <button onClick={()=>{setAiPrefill(null);setPhotoUrl(null);setPhotoFile(null);setEditingRev(null);setShowForm(true);}} style={S.btnGold}>✍️ Manual</button>
             </>
           )}
         </div>
 
         {showForm?(
           <div style={{...S.card,margin:"10px 0"}}>
-            <ReviewForm arnaNumero={arna.numero} initial={editingRev?{...editingRev}:aiPrefill} photoUrl={photoUrl} onSave={handleSave} onCancel={()=>{setShowForm(false);setPhotoUrl(null);setEditingRev(null);}} loading={saveLoad}/>
+            <ReviewForm arnaNumero={arna.numero} initial={editingRev?{...editingRev}:aiPrefill} photoUrl={photoUrl} onSave={handleSave} onCancel={()=>{setShowForm(false);setPhotoUrl(null);setPhotoFile(null);setEditingRev(null);}} loading={saveLoad}/>
           </div>
         ):(
           <>
@@ -946,19 +967,39 @@ function ArnaDetail({ arna, revisions, onAddRevision, onUpdateRevision, onDelete
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {[...sorted].reverse().map(r=>(
                   <div key={r.id} style={{...S.card,padding:12,background:"rgba(255,255,255,0.02)",border:dateCount[r.date]>1?"1px solid rgba(255,140,40,0.35)":S.card.border}}>
-                    <div style={{display:"flex",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.04)",paddingBottom:4,marginBottom:6}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{color:"#f5c842",fontWeight:700,fontSize:13}}>{fmtDate(r.date)}</span>
-                        {dateCount[r.date]>1&&<span style={{fontSize:10,color:"#ff9944",background:"rgba(255,140,40,0.12)",padding:"1px 6px",borderRadius:8}}>⚠️ Duplicada</span>}
+                    <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      {/* Miniatura foto */}
+                      <div style={{flexShrink:0,width:56,height:56}}>
+                        {r.fotoUrl?(
+                          <img
+                            src={r.fotoUrl}
+                            alt="Fitxa"
+                            onClick={()=>setViewerUrl(r.fotoUrl)}
+                            style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid rgba(255,200,50,0.2)",cursor:"zoom-in"}}
+                          />
+                        ):(
+                          <div style={{width:56,height:56,borderRadius:8,border:"1px dashed rgba(255,200,50,0.15)",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                            <span style={{fontSize:20,opacity:0.3}}>📷</span>
+                          </div>
+                        )}
                       </div>
-                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <span style={{fontSize:12,color:"#aaa"}}>Força: {r.forcaColonia!=null?FORCE[r.forcaColonia]:"—"}</span>
-                        <button onClick={()=>handleEdit(r)} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>✏️</button>
-                        <button onClick={()=>setConfirmDelRev(r)} style={{...S.btnRed,padding:"3px 8px",fontSize:11}}>🗑</button>
+                      {/* Contingut */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.04)",paddingBottom:4,marginBottom:6}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{color:"#f5c842",fontWeight:700,fontSize:13}}>{fmtDate(r.date)}</span>
+                            {dateCount[r.date]>1&&<span style={{fontSize:10,color:"#ff9944",background:"rgba(255,140,40,0.12)",padding:"1px 6px",borderRadius:8}}>⚠️ Duplicada</span>}
+                          </div>
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <span style={{fontSize:12,color:"#aaa"}}>Força: {r.forcaColonia!=null?FORCE[r.forcaColonia]:"—"}</span>
+                            <button onClick={()=>handleEdit(r)} style={{...S.btnGhost,padding:"3px 8px",fontSize:11}}>✏️</button>
+                            <button onClick={()=>setConfirmDelRev(r)} style={{...S.btnRed,padding:"3px 8px",fontSize:11}}>🗑</button>
+                          </div>
+                        </div>
+                        <div style={{fontSize:12,color:"#ccc"}}>🍯 {r.quadresMel??"-"}q · 🥚 {r.quadresCria??"-"}q ({r.criaEstat||"—"}) · 🐝 {r.quadresAbelles??"-"}q · Pol·len: {r.pollen!=null?POLLEN[r.pollen]:"—"}</div>
+                        {r.notes&&<div style={{fontSize:11,color:"#7a6040",marginTop:4,fontStyle:"italic"}}>"{r.notes}"</div>}
                       </div>
                     </div>
-                    <div style={{fontSize:12,color:"#ccc"}}>🍯 {r.quadresMel??"-"}q · 🥚 {r.quadresCria??"-"}q ({r.criaEstat||"—"}) · 🐝 {r.quadresAbelles??"-"}q · Pol·len: {r.pollen!=null?POLLEN[r.pollen]:"—"}</div>
-                    {r.notes&&<div style={{fontSize:11,color:"#7a6040",marginTop:4,fontStyle:"italic"}}>"{r.notes}"</div>}
                   </div>
                 ))}
               </div>
@@ -1044,7 +1085,8 @@ export default function App() {
     any_reina:revData.anyReina, varroa_data:revData.varroaData,
     varroa_pct:revData.varroaPct, tractament_mes:revData.tractamentMes,
     tipus_tractament:revData.tipusTractament, nucli_sanitari:revData.nucliSanitari||false,
-    quadres_buits:revData.quadresBuits, agressivitat:revData.agressivitat, notes:revData.notes
+    quadres_buits:revData.quadresBuits, agressivitat:revData.agressivitat, notes:revData.notes,
+    foto_url:revData.fotoUrl||null
   });
 
   const normRev=r=>({...r,
@@ -1054,17 +1096,28 @@ export default function App() {
     cellesReialsUbicacio:r.celles_reials_ubicacio, anyReina:r.any_reina,
     varroaData:r.varroa_data, varroaPct:r.varroa_pct, tractamentMes:r.tractament_mes,
     tipusTractament:r.tipus_tractament, nucliSanitari:r.nucli_sanitari,
-    quadresBuits:r.quadres_buits, agressivitat:r.agressivitat, notes:r.notes
+    quadresBuits:r.quadres_buits, agressivitat:r.agressivitat, notes:r.notes,
+    fotoUrl:r.foto_url||null
   });
 
-  const handleAddRevision=async(revData)=>{
-    const obj=revToDb(revData);
+  const handleAddRevision=async(revData, photoFile)=>{
+    let fotoUrl = revData.fotoUrl || null;
+    if(photoFile && revData.arnaId) {
+      const uploaded = await uploadFoto(photoFile, revData.arnaId);
+      if(uploaded) fotoUrl = uploaded;
+    }
+    const obj=revToDb({...revData, fotoUrl});
     const {data}=await _supa.from("revisions").insert([obj]).select().single();
     if(data) setRevisions(p=>[...p,data].sort((a,b)=>a.date.localeCompare(b.date)));
   };
 
-  const handleUpdateRevision=async(revData)=>{
-    const obj=revToDb(revData);
+  const handleUpdateRevision=async(revData, photoFile)=>{
+    let fotoUrl = revData.fotoUrl || null;
+    if(photoFile && revData.arnaId) {
+      const uploaded = await uploadFoto(photoFile, revData.arnaId);
+      if(uploaded) fotoUrl = uploaded;
+    }
+    const obj=revToDb({...revData, fotoUrl});
     const {data}=await _supa.from("revisions").update(obj).eq("id",revData.id).select().single();
     if(data) setRevisions(p=>p.map(r=>r.id===revData.id?data:r));
   };
@@ -1089,7 +1142,7 @@ export default function App() {
         if(!existing){const {data}=await _supa.from("arnes").insert([{apiari_id:selApiari.id,numero:it.arnaNum}]).select().single();if(data){setArnes(p=>[...p,data]);targetArnaId=data.id;}}
         else targetArnaId=existing.id;
       }
-      if(targetArnaId) await handleAddRevision({...it.formData,arnaId:targetArnaId});
+      if(targetArnaId) await handleAddRevision({...it.formData,arnaId:targetArnaId}, it.file);
     }
     setBulkOpen(false);
     await loadData();
